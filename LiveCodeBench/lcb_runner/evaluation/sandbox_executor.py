@@ -9,22 +9,30 @@ from ms_enclave.sandbox.model import DockerSandboxConfig, SandboxType
 
 _manager = None
 _pool_initialized = False
+_use_dummy = False
 
 
 async def get_manager():
-    """Get or create sandbox manager with pool"""
-    global _manager, _pool_initialized
+    """Get or create sandbox manager pool. If Docker fails, fallback to local dummy mode."""
+    global _manager, _pool_initialized, _use_dummy
 
     if _manager is None:
         _manager = LocalSandboxManager()
         await _manager.__aenter__()
 
     if not _pool_initialized:
-        config = DockerSandboxConfig(
-            image='python:3.11-slim',
-            tools_config={'python_executor': {}}
-        )
-        await _manager.initialize_pool(pool_size=4, sandbox_type=SandboxType.DOCKER, config=config)
+        try:
+            config = DockerSandboxConfig(
+                image='python:3.11-slim',
+                tools_config={'python_executor': {}}
+            )
+            await _manager.initialize_pool(pool_size=4, sandbox_type=SandboxType.DOCKER, config=config)
+            _use_dummy = False
+        except Exception as e:
+            # ms-enclave in this workspace does not provide a registered DUMMY sandbox.
+            # Mark fallback mode and execute via local testing_util path instead.
+            print(f"Docker sandbox failed, falling back to local DUMMY mode: {e}")
+            _use_dummy = True
         _pool_initialized = True
 
     return _manager
@@ -39,6 +47,17 @@ async def execute_in_sandbox(code: str, timeout: int = 6):
 
 def run_test_sandbox(sample, test, timeout=6):
     """Execute test in sandbox"""
+    global _use_dummy
+
+    # Initialize sandbox backend once so we can decide docker vs local dummy path.
+    if not _pool_initialized:
+        asyncio.run(get_manager())
+
+    # Local dummy fallback: delegate to non-sandbox path, which applies reliability_guard.
+    if _use_dummy:
+        from lcb_runner.evaluation.testing_util import run_test
+        return run_test(sample, test=test, debug=False, timeout=timeout, use_sandbox=False)
+
     try:
         in_outs = json.loads(sample["input_output"])
 
