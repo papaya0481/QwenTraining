@@ -6,6 +6,11 @@ git clone --recurse-submodules https://github.com/papaya0481/QwenTraining.git
 ```
 
 ## Live Code Bench
+
+推荐使用uv作为管理器。安装
+```
+pip install uv
+```
 ### 安装
 进入 `LiveCodeBench` 目录，安装依赖。
 ```cd LiveCodeBench
