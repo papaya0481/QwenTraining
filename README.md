@@ -2,7 +2,7 @@
 
 运行以下命令 以克隆包含 `ms-swift` 子模块的仓库.
 ```
-git clone --recurse-submodules <repo-url>
+git clone --recurse-submodules https://github.com/papaya0481/QwenTraining.git
 ```
 
 ## Live Code Bench
