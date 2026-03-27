@@ -2,8 +2,7 @@ try:
     from transformers import AutoTokenizer
     from vllm import LLM, SamplingParams
 except ImportError as e:
-    # print("Cannot import vllm")
-    pass
+    raise ImportError(f"Failed to import vLLM: {e}")
 
 from lcb_runner.runner.base_runner import BaseRunner
 
