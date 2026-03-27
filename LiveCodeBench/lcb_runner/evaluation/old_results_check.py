@@ -41,8 +41,8 @@ def check_model(model_key):
     )
     old_pass1 = np.mean([np.mean(r["pass1_list"]) for r in old_results])
 
-    print(old_pass1)
-    print(metrics[0]["pass@1"])
+    print(f"old_pass@1: {old_pass1}")
+    print(f"new_pass@1: {metrics[0]['pass@1']}")
 
     for idx in range(400):
         old_pass1 = np.mean(old_results[idx]["pass1_list"])
