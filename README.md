@@ -35,6 +35,8 @@ export LD_LIBRARY_PATH=/data/wuli_error/miniconda3/envs/llmqw/lib:$LD_LIBRARY_PA
 使用`compute.sh`获得不同级的分数。
 
 ## MS-enclave sandbox
+>[!WARNING]
+>MS-enclave sandbox 需要sudo权限以运行docker.
 ### 安装
 ```
 uv pip install 'ms-enclave[docker]'
