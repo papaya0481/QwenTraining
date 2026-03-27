@@ -7,6 +7,9 @@ git clone --recurse-submodules <repo-url>
 
 ## Live Code Bench
 需要安装 `datasets==3.6.0`[issue](https://github.com/LiveCodeBench/LiveCodeBench/issues/107)
+```
+uv pip install datasets==3.6.0
+```
 
 如果遇到错
 ```
