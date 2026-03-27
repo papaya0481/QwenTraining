@@ -6,6 +6,12 @@ git clone --recurse-submodules <repo-url>
 ```
 
 ## Live Code Bench
+### 安装
+进入 `LiveCodeBench` 目录，安装依赖。
+```cd LiveCodeBench
+uv pip install -e .
+```
+### 注意事项
 需要安装 `datasets==3.6.0`[issue](https://github.com/LiveCodeBench/LiveCodeBench/issues/107)
 ```
 uv pip install datasets==3.6.0
@@ -18,4 +24,10 @@ uv pip install datasets==3.6.0
 需要添加：
 ```
 export LD_LIBRARY_PATH=/data/wuli_error/miniconda3/envs/llmqw/lib:$LD_LIBRARY_PATH
+```
+
+## MS-enclave sandbox
+### 安装
+```
+uv pip install 'ms-enclave[docker]'
 ```
