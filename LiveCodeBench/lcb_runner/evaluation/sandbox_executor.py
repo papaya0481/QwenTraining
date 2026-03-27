@@ -3,20 +3,38 @@ import json
 import sys
 sys.path.insert(0, '/data/wuli_error/WRX/QwenTraining/ms-enclave')
 
-from ms_enclave.sandbox.boxes import SandboxFactory
+from ms_enclave.sandbox.manager import LocalSandboxManager
 from ms_enclave.sandbox.model import DockerSandboxConfig, SandboxType
 
 
-async def execute_in_sandbox(code: str, timeout: int = 6):
-    """Execute code in sandbox and return output"""
-    config = DockerSandboxConfig(
-        image='python:3.11-slim',
-        tools_config={'python_executor': {}}
-    )
+_manager = None
+_pool_initialized = False
 
-    async with SandboxFactory.create_sandbox(SandboxType.DOCKER, config) as sandbox:
-        result = await sandbox.execute_tool('python_executor', {'code': code})
-        return result.output, result.exit_code
+
+async def get_manager():
+    """Get or create sandbox manager with pool"""
+    global _manager, _pool_initialized
+
+    if _manager is None:
+        _manager = LocalSandboxManager()
+        await _manager.__aenter__()
+
+    if not _pool_initialized:
+        config = DockerSandboxConfig(
+            image='python:3.11-slim',
+            tools_config={'python_executor': {}}
+        )
+        await _manager.initialize_pool(pool_size=4, sandbox_type=SandboxType.DOCKER, config=config)
+        _pool_initialized = True
+
+    return _manager
+
+
+async def execute_in_sandbox(code: str, timeout: int = 6):
+    """Execute code in sandbox pool"""
+    manager = await get_manager()
+    result = await manager.execute_tool_in_pool('python_executor', {'code': code}, timeout=timeout)
+    return result.output, result.exit_code
 
 
 def run_test_sandbox(sample, test, timeout=6):
