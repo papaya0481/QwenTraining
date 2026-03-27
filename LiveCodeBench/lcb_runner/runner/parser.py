@@ -136,6 +136,13 @@ def get_args():
         action="store_true",
         help="Use ms-enclave sandbox for code execution",
     )
+    # 添加：对于vllm的显存不要吃满
+    parser.add_argument(
+        "--vllm_max_gpu_memory",
+        type=str,
+        default="0.9",
+        help="Max GPU memory to use for vllm (e.g., '0.9' for 90%)",
+    )
 
     args = parser.parse_args()
 

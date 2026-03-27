@@ -31,6 +31,9 @@ uv pip install datasets==3.6.0
 export LD_LIBRARY_PATH=/data/wuli_error/miniconda3/envs/llmqw/lib:$LD_LIBRARY_PATH
 ```
 
+### 计算
+使用`compute.sh`获得不同级的分数。
+
 ## MS-enclave sandbox
 ### 安装
 ```
