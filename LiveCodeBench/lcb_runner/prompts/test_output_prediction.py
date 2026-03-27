@@ -243,22 +243,22 @@ def format_prompt_test_output(
             f"{get_cllama_question_template_answer(question, testcase_input)}\n[/INST]"
         )
         return prompt
-    elif LanguageModelStyle == LMStyle.MagiCoder:
-        prompt = f"{PromptConstants.SYSTEM_MESSAGE_CHAT_GENERIC}\n"
-        prompt += f"{get_magicoder_question_template_answer(question, testcase_input)}"
-        return prompt
-    elif LanguageModelStyle == LMStyle.WizardCoder:
-        prompt = f"{PromptConstants.SYSTEM_MESSAGE_WIZARD}\n\n{get_wizard_question_template_answer(question, testcase_input)}"
-        return prompt
-    elif LanguageModelStyle == LMStyle.Phind:
-        prompt = f"### System Prompt\n\n{PromptConstants.SYSTEM_MESSAGE_CHAT_GENERIC}\n\n### User Message\n\n{get_phind_question_template_answer(question, testcase_input)}"
-        return prompt
-    elif LanguageModelStyle == LMStyle.OC:
-        prompt = f"{PromptConstants.SYSTEM_MESSAGE_CHAT_GENERIC}\n"
-        prompt += (
-            f"{get_generic_question_template_test_completion(question, testcase_input)}"
-        )
-        return prompt
+    # elif LanguageModelStyle == LMStyle.MagiCoder:
+    #     prompt = f"{PromptConstants.SYSTEM_MESSAGE_CHAT_GENERIC}\n"
+    #     prompt += f"{get_magicoder_question_template_answer(question, testcase_input)}"
+    #     return prompt
+    # elif LanguageModelStyle == LMStyle.WizardCoder:
+    #     prompt = f"{PromptConstants.SYSTEM_MESSAGE_WIZARD}\n\n{get_wizard_question_template_answer(question, testcase_input)}"
+    #     return prompt
+    # elif LanguageModelStyle == LMStyle.Phind:
+    #     prompt = f"### System Prompt\n\n{PromptConstants.SYSTEM_MESSAGE_CHAT_GENERIC}\n\n### User Message\n\n{get_phind_question_template_answer(question, testcase_input)}"
+    #     return prompt
+    # elif LanguageModelStyle == LMStyle.OC:
+    #     prompt = f"{PromptConstants.SYSTEM_MESSAGE_CHAT_GENERIC}\n"
+    #     prompt += (
+    #         f"{get_generic_question_template_test_completion(question, testcase_input)}"
+    #     )
+    #     return prompt
     elif LanguageModelStyle == LMStyle.MistralWeb:
         chat_messages = [
             {
@@ -273,38 +273,38 @@ def format_prompt_test_output(
             },
         ]
         return chat_messages
-    elif (
-        LanguageModelStyle == LMStyle.DracarysQwen
-    ):
-        prompt = f"{get_qwen_question_template_answer(question, testcase_input)}"
-        return prompt
-    elif LanguageModelStyle == LMStyle.DracarysLlama:
-        chat_messages = [
-            {
-                "role": "system",
-                "content": PromptConstants.SYSTEM_MESSAGE_CHAT_GENERIC,
-            },
-        ]
-        chat_messages += [
-            {
-                "role": "user",
-                "content": get_generic_question_template_test_completion(
-                    question, testcase_input
-                ),
-            },
-        ]
-        from transformers import AutoTokenizer
+    # elif (
+    #     LanguageModelStyle == LMStyle.DracarysQwen
+    # ):
+    #     prompt = f"{get_qwen_question_template_answer(question, testcase_input)}"
+    #     return prompt
+    # elif LanguageModelStyle == LMStyle.DracarysLlama:
+    #     chat_messages = [
+    #         {
+    #             "role": "system",
+    #             "content": PromptConstants.SYSTEM_MESSAGE_CHAT_GENERIC,
+    #         },
+    #     ]
+    #     chat_messages += [
+    #         {
+    #             "role": "user",
+    #             "content": get_generic_question_template_test_completion(
+    #                 question, testcase_input
+    #             ),
+    #         },
+    #     ]
+    #     from transformers import AutoTokenizer
 
-        tokenizer = AutoTokenizer.from_pretrained(
-            "abacusai/Dracarys-Llama-3.1-70B-Instruct", padding_side="right", use_fast=False
-        )
-        return tokenizer.apply_chat_template(
-            chat_messages,
-            tokenize=False,
-            add_generation_prompt=True,
-            truncation=False,
-            padding=False,
-        )
+    #     tokenizer = AutoTokenizer.from_pretrained(
+    #         "abacusai/Dracarys-Llama-3.1-70B-Instruct", padding_side="right", use_fast=False
+    #     )
+    #     return tokenizer.apply_chat_template(
+    #         chat_messages,
+    #         tokenize=False,
+    #         add_generation_prompt=True,
+    #         truncation=False,
+    #         padding=False,
+    #     )
     else:
         raise NotImplementedError(
             f"LanguageModelStyle {LanguageModelStyle} not implemented"
