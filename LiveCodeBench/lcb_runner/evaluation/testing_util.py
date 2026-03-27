@@ -425,11 +425,15 @@ def grade_stdio(
     return all_results, {"execution time": total_execution_time}
 
 
-def run_test(sample, test=None, debug=False, timeout=6):
+def run_test(sample, test=None, debug=False, timeout=6, use_sandbox=False):
     """
     if test(generated_code) is not None it'll try to run the code.
     otherwise it'll just return an input and output pair.
     """
+    if use_sandbox:
+        from lcb_runner.evaluation.sandbox_executor import run_test_sandbox
+        return run_test_sandbox(sample, test, timeout)
+
     signal.signal(signal.SIGALRM, timeout_handler)
 
     # Disable functionalities that can make destructive changes to the test.

@@ -131,6 +131,11 @@ def get_args():
         default=None,
         help="End date for the contest to filter the evaluation file (format - YYYY-MM-DD)",
     )
+    parser.add_argument(
+        "--use_sandbox",
+        action="store_true",
+        help="Use ms-enclave sandbox for code execution",
+    )
 
     args = parser.parse_args()
 

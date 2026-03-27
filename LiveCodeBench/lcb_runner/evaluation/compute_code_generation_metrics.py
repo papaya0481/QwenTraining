@@ -20,13 +20,13 @@ from lcb_runner.evaluation.testing_util import run_test
 from lcb_runner.evaluation.pass_k_utils import compute_metrics_from_results
 
 
-def _temp_run(sample, generation, debug, result, metadata_list, timeout):
-    res, metadata = run_test(sample, test=generation, debug=debug, timeout=timeout)
+def _temp_run(sample, generation, debug, result, metadata_list, timeout, use_sandbox=False):
+    res, metadata = run_test(sample, test=generation, debug=debug, timeout=timeout, use_sandbox=use_sandbox)
     result.append(res)
     metadata_list.append(metadata)
 
 
-def check_correctness(sample, generation, timeout, debug=True):
+def check_correctness(sample, generation, timeout, debug=True, use_sandbox=False):
     """Check correctness of code generation with a global timeout.
     The global timeout is to catch some extreme/rare cases not handled by the timeouts
     inside `run_test`"""
@@ -36,7 +36,7 @@ def check_correctness(sample, generation, timeout, debug=True):
     metadata_list = manager.list()
     p = multiprocessing.Process(
         target=_temp_run,
-        args=(sample, generation, debug, result, metadata_list, timeout),
+        args=(sample, generation, debug, result, metadata_list, timeout, use_sandbox),
     )
     p.start()
     p.join(
@@ -58,6 +58,7 @@ def evaluate_generations_by_problem(args):
     sample = args[1]
     debug: bool = args[2]
     timeout: int = args[3]
+    use_sandbox: bool = args[4] if len(args) > 4 else False
 
     res = []
     metadata = []
@@ -65,7 +66,7 @@ def evaluate_generations_by_problem(args):
         curr_res = [-2]
         try:
             curr_res, curr_metadata = check_correctness(
-                sample, o, timeout=timeout, debug=debug
+                sample, o, timeout=timeout, debug=debug, use_sandbox=use_sandbox
             )
             if debug:
                 print(f"\nSuccessful compilation of task {o_idx}!")
@@ -111,6 +112,7 @@ def evaluate_generations(
     debug: bool = False,
     num_process_evaluate: int = 16,
     timeout=6,
+    use_sandbox=False,
 ):
     """We take the list of code generations and try to compile them
      and the run their corresponding unit tests which are retrieved from the APPS dataset.
@@ -126,7 +128,7 @@ def evaluate_generations(
     # generations are code generations in the same order of the dataset
 
     inputs = [
-        [(generations_list[index], samples_list[index], debug, timeout), index]
+        [(generations_list[index], samples_list[index], debug, timeout, use_sandbox), index]
         for index in range(len(generations_list))
     ]
 
@@ -161,6 +163,7 @@ def codegen_metrics(
     num_process_evaluate=16,
     timeout=6,
     debug=False,
+    use_sandbox=False,
 ):
 
     samples_linear = []
@@ -186,6 +189,7 @@ def codegen_metrics(
         debug=debug,
         num_process_evaluate=num_process_evaluate,
         timeout=timeout,
+        use_sandbox=use_sandbox,
     )
 
     for idx, sub_results in sorted(results_linear.items(), key=lambda x: x[0]):

@@ -194,6 +194,7 @@ def get_metrics(
             generations,
             num_process_evaluate=args.num_process_evaluate,
             timeout=args.timeout,
+            use_sandbox=getattr(args, 'use_sandbox', False),
         )
 
     elif args.scenario == Scenario.testoutputprediction:
