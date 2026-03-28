@@ -60,7 +60,7 @@ def get_args():
     )
     parser.add_argument("--top_p", type=float, default=0.95, help="Top p for sampling")
     parser.add_argument(
-        "--max_tokens", type=int, default=4096, help="Max tokens for sampling"
+        "--max_tokens", type=int, default=8192, help="Max tokens for sampling"
     )
     parser.add_argument(
         "--multiprocess",

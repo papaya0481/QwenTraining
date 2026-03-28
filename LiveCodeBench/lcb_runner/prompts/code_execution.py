@@ -68,6 +68,37 @@ assert {input} == ??
 [ANSWER]
 """
 
+def make_qwen_cot_output_prompt(s):
+    code, input = s
+    return f"""
+You are given a Python function and an assertion containing an input to the function. Complete the assertion with a literal (no unsimplified expressions, no function calls) containing the output when executing the provided code on the given input, even if the function is incorrect or incomplete. Do NOT output any extra information. Execute the program step by step before arriving at an answer, and provide the full assertion with the correct output in [ANSWER] and [/ANSWER] tags, following the examples.
+
+```python
+def performOperation(s):
+    s = s + s
+    return "b" + s + "a"
+assert performOperation(s = "hi") == ??
+```
+<think>
+Let's execute the code step by step:
+
+1. The function performOperation is defined, which takes a single argument s.
+2. The function is called with the argument "hi", so within the function, s is initially "hi".
+3. Inside the function, s is concatenated with itself, so s becomes "hihi".
+4. The function then returns a new string that starts with "b", followed by the value of s (which is now "hihi"), and ends with "a".
+5. The return value of the function is therefore "bhihia".
+</think>
+
+[ANSWER]
+assert performOperation(s = "hi") == "bhihia"
+[/ANSWER]
+
+```python
+{code}
+assert {input} == ??
+```
+"""
+
 
 def format_prompt_execution(question, LanguageModelStyle):
     return format_prompt_execution_base(question, LanguageModelStyle, False)
@@ -92,7 +123,7 @@ def get_qwen_new_template(question):
     默认开启cot
     """
     tokenizer = get_qwen_tokenizer("Qwen/Qwen3.5-0.8B")
-    prompt = make_cot_output_prompt((question.code, question.input))
+    prompt = make_qwen_cot_output_prompt((question.code, question.input))
 
     messages = [
         {"role": "system", "content": PromptConstants.SYSTEM_MESSAGE_CHAT_GENERIC},
