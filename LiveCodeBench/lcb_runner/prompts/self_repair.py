@@ -34,13 +34,13 @@ class PromptConstants:
 #     return io
 
 
-def get_check_prompt(question: str, result, metadata):
+def get_check_prompt(question: str, result, metadata_raw):
     ## assumes i/o examples are already truncated!
     ## less pressure on storing 10 MB json because on a single large input-output pair
     # result_by_test_case = result
     # assert len(metadata) == 1, f"metadata = {metadata}"
     # metadata = metadata[0]
-    metadata = json.loads(metadata)
+    metadata = json.loads(metadata_raw)
     if "error_code" not in metadata:
         return ""
     if metadata["error_code"] == -1:
@@ -55,7 +55,15 @@ def get_check_prompt(question: str, result, metadata):
         pass
     elif metadata["error_code"] == -4:
         # runtime error
-        message = f"The above code is incorrect and got a runtime error.\nInput: {metadata['inputs']}\nExpected: {metadata['expected']}\n{metadata['error']}"
+        message = f"The above code is incorrect and got a runtime error.\n"
+        # Input: {metadata['inputs']}\nExpected: {metadata['expected']}\n{metadata['error']}
+        if message.get("inputs", None) and message.get("expected", None):
+            message += f"Input: {metadata['inputs']}\nExpected: {metadata['expected']}\n"
+        if message.get("error", None):
+            message += f"{metadata['error']}\n"
+        if message.get("error_message", None):
+            message += f"{metadata['error_message']}\n"
+            
     else:
         raise NotImplementedError(
             f"metadata['error_code'] = {metadata['error_code']} not implemented || {metadata=}"
