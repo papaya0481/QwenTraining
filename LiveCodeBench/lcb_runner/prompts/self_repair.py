@@ -3,6 +3,8 @@ import json
 from anthropic import HUMAN_PROMPT, AI_PROMPT
 
 from lcb_runner.lm_styles import LMStyle
+from functools import lru_cache
+import os
 
 
 class PromptConstants:
@@ -68,6 +70,44 @@ def get_generic_question_template_answer(question: str, code, result, metadata):
     prompt += f"### Format: {PromptConstants.FORMATTING_WITHOUT_STARTER_CODE}\n"
     prompt += "```python\n# YOUR CODE HERE\n```\n\n"
     prompt += f"### Answer: (use the provided format with backticks)\n\n"
+    return prompt
+
+@lru_cache(maxsize=None) # cache model
+def get_qwen_tokenizer(model_name: str):
+    from transformers import AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_name, padding_side="left", use_fast=False
+    )
+    return tokenizer
+
+
+def get_qwen_new_template_answer(question: str, code, result, metadata):
+    """
+    适配Qwen3.5的prompt模板. 同 get_generic_question_template_answer的区别在于启用了enable_thinking=True.
+    """
+    tokenizer = get_qwen_tokenizer("Qwen/Qwen3.5-0.8B")
+
+    prompt = f"### Question:\n{question}\n\n"
+    prompt += f"### Answer:\n```python\n{code}\n```\n\n"
+    prompt += get_check_prompt(question, result, metadata) + "\n"
+    prompt += f"### Format: {PromptConstants.FORMATTING_WITHOUT_STARTER_CODE}\n"
+    prompt += "```python\n# YOUR CODE HERE\n```\n\n"
+    prompt += f"### Answer: (use the provided format with backticks)\n\n"
+
+    messages = [
+        {"role": "system", "content": PromptConstants.SYSTEM_MESSAGE_GENERIC},
+        {"role": "user", "content": prompt},
+    ]
+
+    prompt = tokenizer.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=True,
+        truncation=False,
+        padding=False,
+        enable_thinking=True,  # 启用思考过程输出
+    )
     return prompt
 
 
@@ -301,6 +341,9 @@ def format_prompt_self_repair(
     #     prompt += f"{get_wizard_question_template_answer(question, code, result,metadata)}"
     #     prompt += "[/INST]"
     #     return prompt
+    elif LanguageModelStyle == LMStyle.QwenGeneral:
+        prompt = get_qwen_new_template_answer(question, code, result, metadata)
+        return prompt
     else:
         raise NotImplementedError(
             f"LanguageModelStyle {LanguageModelStyle} not implemented"
@@ -326,9 +369,9 @@ def test():
             fp.write(json.dumps(prompt))
         return
 
-    for lm_style in [LMStyle.OpenAIChat]:
+    for lm_style in [LMStyle.QwenGeneral]:
         with open(
-            "output/GPT-3.5-Turbo-0125/Scenario.codegeneration_10_0.2_eval_all.json"
+            "output/Qwen3.5-2B/Scenario.codegeneration_10_0.2_eval_all.json"
         ) as f:
             check_metadata = json.load(f)[0]
         checked_base_question_cotent = check_metadata["question_content"]
@@ -343,7 +386,8 @@ def test():
             checked_base_metadata,
         )
 
-        with open(f"/tmp/leetcode_{lm_style}.txt", "w") as fp:
+        os.makedirs("logs/example_prompts/self_repair", exist_ok=True)
+        with open(f"logs/example_prompts/self_repair/leetcode_{lm_style}.txt", "w") as fp:
             write_str_or_json(leetcode_prompt)
     return
 
