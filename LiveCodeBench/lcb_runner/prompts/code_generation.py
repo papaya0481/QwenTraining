@@ -9,6 +9,8 @@ except ImportError:
 from lcb_runner.lm_styles import LMStyle
 from lcb_runner.benchmarks.code_generation import CodeGenerationProblem
 
+from functools import lru_cache
+
 
 class PromptConstants:
     SYSTEM_MESSAGE_GENERIC = f"You are an expert Python programmer. You will be given a question (problem specification) and will generate a correct Python program that matches the specification and passes all tests."
@@ -122,6 +124,47 @@ def get_qwen_question_template_answer(question: CodeGenerationProblem):
         add_generation_prompt=True,
         truncation=False,
         padding=False,
+    )
+    return prompt
+
+@lru_cache(maxsize=None) # cache model
+def get_qwen_tokenizer(model_name: str):
+    from transformers import AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_name, padding_side="left", use_fast=False
+    )
+    return tokenizer
+
+
+def get_qwen_new_template_answer(question: CodeGenerationProblem):
+    """
+    适配Qwen3.5的prompt模板.
+    """
+    tokenizer = get_qwen_tokenizer("Qwen/Qwen3.5-0.8B")
+    system_prompt = PromptConstants.SYSTEM_MESSAGE_GENERIC
+    
+    prompt = ""
+    prompt += f"Question:\n{question.question_content}\n\n"
+    if question.starter_code:
+        prompt += f"{PromptConstants.FORMATTING_MESSAGE_WITH_STARTER_CODE}\n"
+        prompt += f"```python\n{question.starter_code}\n```\n\n"
+    else:
+        prompt += f"{PromptConstants.FORMATTING_WITHOUT_STARTER_CODE}\n\n"
+        prompt += f"```python\n# YOUR CODE HERE\n```\n\n"
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": prompt},
+    ]
+
+    prompt = tokenizer.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=True,
+        truncation=False,
+        padding=False,
+        enable_thinking=True,  # 启用思考过程输出
     )
     return prompt
 
@@ -338,6 +381,10 @@ def format_prompt_generation(
     if LanguageModelStyle == LMStyle.GenericBase:
         prompt = get_base_model_question_template_answer(question)
         return prompt
+    
+    if LanguageModelStyle == LMStyle.QwenGeneral:
+        prompt = get_qwen_new_template_answer(question)
+        return prompt
 
     raise NotImplementedError(
         f"LanguageModelStyle {LanguageModelStyle} not implemented"
@@ -351,13 +398,15 @@ def test():
     pathlib.Path(base_dir).mkdir(parents=True, exist_ok=True)
 
     for lmstyle in LMStyle:
+        if lmstyle != LMStyle.QwenGeneral:
+            continue
         generation_problem = CodeGenerationProblem(
             "title",
             "question-content",
             "leetcode",
             "question_id",
             "contest_id",
-            "contest_date",
+            "2023-01-01",
             "",
             "easy",
             "[]",

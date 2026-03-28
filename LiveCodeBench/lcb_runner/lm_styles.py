@@ -33,6 +33,9 @@ class LMStyle(Enum):
     DeepSeekR1 = "DeepSeekR1"
 
     TogetherAI = "TogetherAI"
+    
+    # 新增LMstyle for Qwen new
+    QwenGeneral = "QwenGeneral"
 
 
 @dataclass
