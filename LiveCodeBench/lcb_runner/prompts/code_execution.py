@@ -3,6 +3,10 @@ import json
 from lcb_runner.lm_styles import LMStyle
 from lcb_runner.benchmarks import CodeExecutionProblem
 
+from functools import lru_cache
+
+class PromptConstants:
+    SYSTEM_MESSAGE_CHAT_GENERIC = f"You are an expert at Python programming, code execution, test case generation, and fuzzing."
 
 def make_cot_output_prompt(s):
     code, input = s
@@ -71,6 +75,39 @@ def format_prompt_execution(question, LanguageModelStyle):
 
 def format_prompt_execution_cot(question, LanguageModelStyle):
     return format_prompt_execution_base(question, LanguageModelStyle, True)
+
+@lru_cache(maxsize=None) # cache model
+def get_qwen_tokenizer(model_name: str):
+    from transformers import AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_name, padding_side="left", use_fast=False
+    )
+    return tokenizer
+
+
+def get_qwen_new_template(question):
+    """
+    适配Qwen3.5的prompt模板.
+    默认开启cot
+    """
+    tokenizer = get_qwen_tokenizer("Qwen/Qwen3.5-0.8B")
+    prompt = make_cot_output_prompt((question.code, question.input))
+
+    messages = [
+        {"role": "system", "content": PromptConstants.SYSTEM_MESSAGE_CHAT_GENERIC},
+        {"role": "user", "content": prompt},
+    ]
+
+    prompt = tokenizer.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=True,
+        truncation=False,
+        padding=False,
+        enable_thinking=True,  # 启用思考过程输出
+    )
+    return prompt
 
 
 def format_prompt_execution_base(
@@ -142,8 +179,8 @@ def format_prompt_execution_base(
     #     return prompt
     # elif LanguageModelStyle == LMStyle.Phind:
     #     return prompt
-    elif LanguageModelStyle == LMStyle.OC:
-        return prompt
+    # elif LanguageModelStyle == LMStyle.OC:
+    #     return prompt
     elif LanguageModelStyle == LMStyle.MistralWeb:
         chat_messages = [
             {
@@ -177,7 +214,27 @@ def format_prompt_execution_base(
     #     )
     # elif LanguageModelStyle == LMStyle.DracarysQwen:
     #     return prompt
+    elif LanguageModelStyle == LMStyle.QwenGeneral:
+        return get_qwen_new_template(question)
     else:
         raise NotImplementedError(
             f"LanguageModelStyle {LanguageModelStyle} not implemented"
         )
+        
+if __name__ == "__main__":
+    # 测试prompt格式化
+    question = CodeExecutionProblem(
+        question_id="",
+        contest_id="",
+        contest_date="2024-01-01",
+        code="def add(a, b):\n    return a + b",
+        input="add(2, 3)",
+        output="5",
+        difficulty="Easy",
+        function_name="add",
+        id="",
+        problem_id="",
+        numsteps="",
+    )
+    prompt = format_prompt_execution(question, LMStyle.QwenGeneral)
+    print(prompt)
