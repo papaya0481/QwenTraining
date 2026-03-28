@@ -5,6 +5,8 @@ from anthropic import HUMAN_PROMPT, AI_PROMPT
 from lcb_runner.lm_styles import LMStyle
 from lcb_runner.benchmarks import TestOutputPredictionProblem
 
+from functools import lru_cache
+
 
 class PromptConstants:
     SYSTEM_MESSAGE_CHAT_GENERIC = f"You are a helpful programming assistant and an expert Python programmer.\
@@ -78,6 +80,38 @@ def get_generic_question_template_test_completion(
         f"```\n{format_testcase_func_name_input(func_name, testcase_input)}\n```\n"
     )
 
+    return prompt
+
+@lru_cache(maxsize=None) # cache model
+def get_qwen_tokenizer(model_name: str):
+    from transformers import AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_name, padding_side="left", use_fast=False
+    )
+    return tokenizer
+
+
+def get_qwen_new_template_answer(question: TestOutputPredictionProblem, testcase_input: str):
+    """
+    适配Qwen3.5的prompt模板.
+    """
+    tokenizer = get_qwen_tokenizer("Qwen/Qwen3.5-0.8B")
+    prompt = get_generic_question_template_test_completion(question, testcase_input)
+
+    messages = [
+        {"role": "system", "content": PromptConstants.SYSTEM_MESSAGE_CHAT_GENERIC},
+        {"role": "user", "content": prompt},
+    ]
+
+    prompt = tokenizer.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=True,
+        truncation=False,
+        padding=False,
+        enable_thinking=True,  # 启用思考过程输出
+    )
     return prompt
 
 
@@ -305,7 +339,37 @@ def format_prompt_test_output(
     #         truncation=False,
     #         padding=False,
     #     )
+    elif LanguageModelStyle == LMStyle.QwenGeneral:
+        prompt = f"{get_qwen_new_template_answer(question, testcase_input)}"
+        return prompt
     else:
         raise NotImplementedError(
             f"LanguageModelStyle {LanguageModelStyle} not implemented"
         )
+
+if __name__ == "__main__":
+    # 创建测试
+    from lcb_runner.benchmarks.test_output_prediction import Test
+    question = TestOutputPredictionProblem(
+        question_title="Sum to N",
+        question_content="Given an integer n, return the sum of integers from 1 to n.",
+        question_id="sum_to_n",
+        contest_id="test_contest",
+        contest_date="2024-01-01",
+        difficulty="Easy",
+        starter_code="def sum_to_n(n):\n    # TODO: implement this function\n    pass",
+        test=[Test(input="5", output="15", testtype="sample")],
+        function_name="sum_to_n",
+        test_id="test_sum_to_n_1",
+    )
+    
+    import os
+    os.makedirs("logs/example_prompts/test_output_prediction", exist_ok=True)
+    for lm_style in [LMStyle.QwenGeneral]:
+        prompt = format_prompt_test_output(question, lm_style)
+        with open(f"logs/example_prompts/test_output_prediction/leetcode_{lm_style}.txt", "w") as fp:
+            if isinstance(prompt, list):
+                json.dump(prompt, fp, indent=4)
+            else:
+                fp.write(prompt)
+    

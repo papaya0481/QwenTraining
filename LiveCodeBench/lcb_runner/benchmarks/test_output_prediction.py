@@ -27,7 +27,14 @@ class TestOutputPredictionProblem:
     test_id: int
 
     def __post_init__(self):
-        self.test = [Test(**t) for t in json.loads(self.test)]  # type: ignore
+        if isinstance(self.contest_date, str):
+            self.contest_date = datetime.fromisoformat(self.contest_date)
+
+        parsed_test = json.loads(self.test) if isinstance(self.test, str) else self.test
+        if not isinstance(parsed_test, list):
+            raise TypeError(f"test must be a list or JSON list string, got {type(parsed_test).__name__}")
+
+        self.test = [t if isinstance(t, Test) else Test(**t) for t in parsed_test]  # type: ignore[arg-type]
 
     def insert_output(self, output_list: list[str], pred_list: list[str]) -> dict:
         return {
