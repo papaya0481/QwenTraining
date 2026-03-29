@@ -589,7 +589,7 @@ def add(a, b):
 
     dict_style_samples = {
         "input": [[4, 6], [5, 8]],
-        "output": [10, 13],
+        "output": [20, 26],
     }
 
     list_style_results = executor.evaluate(
