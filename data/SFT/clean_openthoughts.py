@@ -8,6 +8,114 @@ PREFIX_USER_PROMPT = """
 Generate an executable Python function generated from the given prompt. The function should take stdin as input and print the output."""
 
 
+def evaluate_code_domain_data(code_domain_data, executor, sample_limit=100, max_workers=16):
+    # 对 deepseek_solution中的代码，提取出代码块，并使用test_cases中的输入输出进行测试。
+    # 返回是否通过以及每个测试样例的错误信息（通过则为空字符串）。
+    def evaluate_for_map(sample):
+        solution = (sample.get("deepseek_solution", "") or "")
+        raw_test_cases = sample.get("test_cases", "")
+
+        test_samples = None
+        if raw_test_cases is None:
+            test_samples = None
+        else:
+            data = raw_test_cases
+            if isinstance(raw_test_cases, str):
+                try:
+                    data = json.loads(raw_test_cases)
+                except Exception:
+                    data = None
+
+            if isinstance(data, dict):
+                # OpenThoughts code 样本常见格式: {"inputs": [...], "outputs": [...]}。
+                if "inputs" in data and "outputs" in data:
+                    test_samples = {"input": data["inputs"], "output": data["outputs"]}
+                elif "input" in data and "output" in data:
+                    test_samples = data
+            elif isinstance(data, list):
+                test_samples = data
+
+        if test_samples is None:
+            return {
+                "_is_passed": False,
+                "test_case_errors": ["Invalid or missing test_cases"],
+            }
+
+        if isinstance(test_samples, dict):
+            inputs = test_samples.get("input", [])
+            if not isinstance(inputs, list):
+                inputs = [inputs]
+            case_count = len(inputs)
+        elif isinstance(test_samples, list):
+            case_count = len(test_samples)
+        else:
+            case_count = 0
+
+        if case_count <= 0:
+            return {
+                "_is_passed": False,
+                "test_case_errors": ["No executable test cases"],
+            }
+
+        if not solution.strip():
+            return {
+                "_is_passed": False,
+                "test_case_errors": ["Empty solution"] * case_count,
+            }
+
+        try:
+            results = executor.evaluate(
+                model_response=solution,
+                test_samples=test_samples,
+                mode="stdio",
+                use_multiprocessing=True,
+                max_workers=max_workers,
+            )
+        except Exception as exc:
+            return {
+                "_is_passed": False,
+                "test_case_errors": [repr(exc)] * case_count,
+            }
+
+        if not results:
+            return {
+                "_is_passed": False,
+                "test_case_errors": ["Executor returned no test results"],
+            }
+
+        test_case_errors = []
+        for item in results:
+            if item.get("passed", False):
+                test_case_errors.append("")
+                continue
+
+            error_message = (item.get("error_message") or "").strip()
+            if not error_message:
+                error_code = item.get("error_code")
+                if error_code:
+                    error_message = f"Execution failed ({error_code})"
+                else:
+                    error_message = "Execution failed without detailed error"
+            test_case_errors.append(error_message)
+
+        is_passed = all(item.get("passed", False) for item in results)
+        if not is_passed and all(not err for err in test_case_errors):
+            test_case_errors = ["Failed but no detailed error message"] * len(results)
+
+        return {
+            "_is_passed": is_passed,
+            "test_case_errors": test_case_errors,
+        }
+
+    # 先选择前 sample_limit 个样本进行测试，避免一次性处理过多数据导致资源耗尽。
+    test_code_domain_data = code_domain_data.select(range(min(sample_limit, len(code_domain_data))))
+    evaluated_code_domain_data = test_code_domain_data.map(evaluate_for_map)
+
+    passed_code_domain_data = evaluated_code_domain_data.filter(lambda sample: sample["_is_passed"])
+    failed_code_domain_data = evaluated_code_domain_data.filter(lambda sample: not sample["_is_passed"])
+    return passed_code_domain_data, failed_code_domain_data
+
+
 if __name__ == "__main__":
     dataset = load_dataset("open-thoughts/OpenThoughts-114k", 
                            name="metadata", 
@@ -33,61 +141,25 @@ if __name__ == "__main__":
 
     executor = ModelResponseCodeExecutor(timeout=4, memory_limit_mb=512)
 
-    def parse_test_cases(raw_test_cases):
-        if raw_test_cases is None:
-            return None
-
-        data = raw_test_cases
-        if isinstance(raw_test_cases, str):
-            try:
-                data = json.loads(raw_test_cases)
-            except Exception:
-                return None
-
-        if isinstance(data, dict):
-            # OpenThoughts code 样本常见格式: {"inputs": [...], "outputs": [...]}。
-            if "inputs" in data and "outputs" in data:
-                return {"input": data["inputs"], "output": data["outputs"]}
-            if "input" in data and "output" in data:
-                return data
-            return None
-
-        if isinstance(data, list):
-            return data
-
-        return None
-    
-    # 对 deepseek_solution中的代码，提取出代码块，并使用test_cases中的输入输出进行测试，保留测试通过的样本。
-    def _sample_passed(solution, raw_test_cases):
-        solution = solution or ""
-        test_samples = parse_test_cases(raw_test_cases)
-        if not solution.strip() or not test_samples:
-            return False
-
-        try:
-            results = executor.evaluate(
-                model_response=solution,
-                test_samples=test_samples,
-                mode="stdio",
-                use_multiprocessing=True,
-                max_workers=16,
-            )
-        except Exception:
-            return False
-
-        return bool(results) and all(item.get("passed", False) for item in results)
-
-    def extract_code_and_test(batch):
-        solutions = batch.get("deepseek_solution", [])
-        test_cases = batch.get("test_cases", [])
-        return [_sample_passed(solution, raw_test_cases) for solution, raw_test_cases in zip(solutions, test_cases)]
-
-    passed_code_domain_data = code_domain_data.filter(
-        extract_code_and_test,
-        batched=False,
-        batch_size=16,
+    passed_code_domain_data, failed_code_domain_data = evaluate_code_domain_data(
+        code_domain_data=code_domain_data,
+        executor=executor,
+        sample_limit=100,
+        max_workers=16,
     )
+
     print("Passed samples:", len(passed_code_domain_data))
+    print("Failed samples:", len(failed_code_domain_data))
+
+    failed_output_path = Path(__file__).resolve().with_name("failed_code_domain_data.json")
+    failed_code_domain_data = failed_code_domain_data.remove_columns(["_is_passed"])
+    failed_code_domain_data.to_json(
+        str(failed_output_path),
+        orient="records",
+        lines=False,
+        force_ascii=False,
+    )
+    print("Failed samples saved to:", failed_output_path)
     
     # 临时保存通过测试的样本，避免后续处理过程中出现问题导致数据丢失。
-    passed_code_domain_data.save_to_disk("passed_code_domain_data")
+    # passed_code_domain_data.save_to_disk("passed_code_domain_data")

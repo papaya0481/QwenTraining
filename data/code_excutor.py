@@ -284,15 +284,20 @@ class SafePythonValidator:
             }
 
             try:
-                exec(code, namespace)
                 if mode == "call_based":
+                    exec(code, namespace)
                     result = _run_call_based(namespace, fn_name, case_input)
                 else:
+                    # Parse first so syntax issues are reported as compile errors,
+                    # then execute once with redirected stdio for this testcase.
+                    compile(code, "<generated>", "exec")
                     result = _run_stdio(namespace, code, case_input)
             except TimeoutError as exc:
                 result = {"ok": False, "error_code": "TLE", "error_message": repr(exc)}
-            except Exception as exc:
+            except SyntaxError as exc:
                 result = {"ok": False, "error_code": "COMPILE_ERROR", "error_message": repr(exc)}
+            except Exception as exc:
+                result = {"ok": False, "error_code": "RUNTIME_ERROR", "error_message": repr(exc)}
             finally:
                 signal.alarm(0)
 
@@ -432,7 +437,7 @@ class ModelResponseCodeExecutor:
                     "passed": passed,
                     "actual": actual,
                     "error_code": None if passed else "WRONG_ANSWER",
-                    "error_message": None if passed else "Output does not match expected value",
+                    "error_message": None if passed else self._build_mismatch_reason(actual, case.expected_output, run_mode),
                 }
             )
             results.append(row)
@@ -547,6 +552,56 @@ class ModelResponseCodeExecutor:
             if act_nums != exp_nums:
                 return False
         return True
+
+    def _build_mismatch_reason(self, actual: Any, expected: Any, mode: str) -> str:
+        if mode == "stdio":
+            return self._build_text_mismatch_reason(str(actual), str(expected))
+
+        normalized_actual = self._normalize_value(actual)
+        normalized_expected = self._normalize_value(expected)
+        return (
+            "Output mismatch: expected "
+            f"{self._truncate_repr(normalized_expected)}, "
+            f"got {self._truncate_repr(normalized_actual)}"
+        )
+
+    @classmethod
+    def _build_text_mismatch_reason(cls, actual: str, expected: str) -> str:
+        actual_lines = [line.strip() for line in actual.strip().splitlines()]
+        expected_lines = [line.strip() for line in expected.strip().splitlines()]
+
+        if len(actual_lines) != len(expected_lines):
+            return (
+                "Output line count mismatch: "
+                f"expected {len(expected_lines)}, got {len(actual_lines)}"
+            )
+
+        for line_idx, (act_line, exp_line) in enumerate(zip(actual_lines, expected_lines), start=1):
+            if act_line == exp_line:
+                continue
+
+            act_nums = cls._parse_decimal_line(act_line)
+            exp_nums = cls._parse_decimal_line(exp_line)
+            if act_nums is not None and exp_nums is not None and act_nums != exp_nums:
+                return (
+                    f"Numeric mismatch at line {line_idx}: "
+                    f"expected {cls._truncate_repr(exp_line, 80)}, "
+                    f"got {cls._truncate_repr(act_line, 80)}"
+                )
+            return (
+                f"Text mismatch at line {line_idx}: "
+                f"expected {cls._truncate_repr(exp_line, 80)}, "
+                f"got {cls._truncate_repr(act_line, 80)}"
+            )
+
+        return "Output does not match expected value"
+
+    @staticmethod
+    def _truncate_repr(value: Any, max_len: int = 200) -> str:
+        text = repr(value)
+        if len(text) <= max_len:
+            return text
+        return text[: max_len - 3] + "..."
 
     @staticmethod
     def _parse_decimal_line(line: str) -> Optional[Tuple[Decimal, ...]]:
