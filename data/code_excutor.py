@@ -459,7 +459,7 @@ class ModelResponseCodeExecutor:
                 for case in cases
             }
 
-        resolved_workers = max_workers or min(len(cases), (os.cpu_count() or 2))
+        resolved_workers = max_workers or min(len(cases), (os.cpu_count() or 8))
         by_index: Dict[int, Dict[str, Any]] = {}
 
         def _thread_task(case: NormalizedTestCase) -> Dict[str, Any]:

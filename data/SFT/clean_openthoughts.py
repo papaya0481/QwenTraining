@@ -57,10 +57,10 @@ if __name__ == "__main__":
 
         return None
     
-    # 对 deepseek_solution中的代码，提取出代码块，并使用test_cases中的输入输出进行测试，保留测试通过的样本
-    def extract_code_and_test(sample):
-        solution = sample.get("deepseek_solution") or ""
-        test_samples = parse_test_cases(sample.get("test_cases"))
+    # 对 deepseek_solution中的代码，提取出代码块，并使用test_cases中的输入输出进行测试，保留测试通过的样本。
+    def _sample_passed(solution, raw_test_cases):
+        solution = solution or ""
+        test_samples = parse_test_cases(raw_test_cases)
         if not solution.strip() or not test_samples:
             return False
 
@@ -70,12 +70,24 @@ if __name__ == "__main__":
                 test_samples=test_samples,
                 mode="stdio",
                 use_multiprocessing=True,
+                max_workers=16,
             )
         except Exception:
             return False
 
         return bool(results) and all(item.get("passed", False) for item in results)
 
-    passed_code_domain_data = code_domain_data.filter(extract_code_and_test)
+    def extract_code_and_test(batch):
+        solutions = batch.get("deepseek_solution", [])
+        test_cases = batch.get("test_cases", [])
+        return [_sample_passed(solution, raw_test_cases) for solution, raw_test_cases in zip(solutions, test_cases)]
+
+    passed_code_domain_data = code_domain_data.filter(
+        extract_code_and_test,
+        batched=True,
+        batch_size=16,
+    )
     print("Passed samples:", len(passed_code_domain_data))
-    print(passed_code_domain_data)
+    
+    # 临时保存通过测试的样本，避免后续处理过程中出现问题导致数据丢失。
+    passed_code_domain_data.save_to_disk("passed_code_domain_data")
