@@ -84,7 +84,7 @@ if __name__ == "__main__":
 
     passed_code_domain_data = code_domain_data.filter(
         extract_code_and_test,
-        batched=True,
+        batched=False,
         batch_size=16,
     )
     print("Passed samples:", len(passed_code_domain_data))
