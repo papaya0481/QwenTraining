@@ -32,11 +32,14 @@ def parse_test_cases(raw_test_cases):
     return None
 
 # 对 deepseek_solution中的代码，提取出代码块，并使用test_cases中的输入输出进行测试，保留测试通过的样本。
-def _sample_passed(solution, raw_test_cases):
+def _sample_result(solution, raw_test_cases):
+    """返回 (passed: bool, error_reason: str | None)"""
     solution = solution or ""
     test_samples = parse_test_cases(raw_test_cases)
-    if not solution.strip() or not test_samples:
-        return False
+    if not solution.strip():
+        return False, "empty solution"
+    if not test_samples:
+        return False, "no test cases"
 
     try:
         results = executor.evaluate(
@@ -46,17 +49,30 @@ def _sample_passed(solution, raw_test_cases):
             use_multiprocessing=True,
             max_workers=16,
         )
-    except Exception:
-        return False
+    except Exception as e:
+        return False, f"executor exception: {e}"
 
-    return bool(results) and all(item.get("passed", False) for item in results)
+    if not results:
+        return False, "empty results"
+
+    failed = [item for item in results if not item.get("passed", False)]
+    if failed:
+        reasons = "; ".join(
+            f"[{item.get('error_code', 'UNKNOWN')}] {item.get('error_message', '')}"
+            for item in failed
+        )
+        return False, reasons
+
+    return True, None
 
 def mark_sample_passed(sample):
+    passed, error_reason = _sample_result(
+        sample.get("deepseek_solution", ""),
+        sample.get("test_cases"),
+    )
     return {
-        "_sample_passed": _sample_passed(
-            sample.get("deepseek_solution", ""),
-            sample.get("test_cases"),
-        )
+        "_sample_passed": passed,
+        "_error_reason": error_reason or "",
     }
 
 
@@ -101,10 +117,17 @@ if __name__ == "__main__":
     executor = ModelResponseCodeExecutor(timeout=8, memory_limit_mb=2048)
 
     trimmed_code_domain_data = code_domain_data.map(trim_test_cases)
-    marked_code_domain_data = trimmed_code_domain_data.map(mark_sample_passed, num_proc=16)
+    marked_code_domain_data = trimmed_code_domain_data.map(mark_sample_passed, num_proc=8)
     passed_code_domain_data = marked_code_domain_data.filter(lambda sample: sample["_sample_passed"])
-    passed_code_domain_data = passed_code_domain_data.remove_columns(["_sample_passed"])
+    passed_code_domain_data = passed_code_domain_data.remove_columns(["_sample_passed", "_error_reason"])
     print("Passed samples:", len(passed_code_domain_data))
+
+    # 保存未通过的样本（只保留 solution、test_cases、error_reason）
+    failed_code_domain_data = marked_code_domain_data.filter(lambda sample: not sample["_sample_passed"])
+    failed_code_domain_data = failed_code_domain_data.select_columns(["deepseek_solution", "test_cases", "_error_reason"])
+    failed_code_domain_data = failed_code_domain_data.rename_column("_error_reason", "error_reason")
+    failed_code_domain_data.save_to_disk("failed_code_domain_data")
+    print("Failed samples:", len(failed_code_domain_data))
     
     # # 临时保存通过测试的样本，避免后续处理过程中出现问题导致数据丢失。
     # passed_code_domain_data.save_to_disk("passed_code_domain_data")
