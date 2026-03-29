@@ -886,6 +886,20 @@ LanguageModelList: list[LanguageModel] = [
         datetime(2026, 1, 30),
         link="https://huggingface.co/Qwen/Qwen3.5-0.8B",
     ),
+    LanguageModel(
+        "Qwen/Qwen3-0.6B",
+        "Qwen3-0.6B",
+        LMStyle.QwenGeneral,
+        datetime(2025, 5, 30),
+        link="https://huggingface.co/Qwen/Qwen3-0.6B",
+    ),
+    LanguageModel(
+        "Qwen/Qwen3-8B",
+        "Qwen3-8B",
+        LMStyle.QwenGeneral,
+        datetime(2025, 5, 30),
+        link="https://huggingface.co/Qwen/Qwen3-8B",
+    ),
 ]
 
 LanguageModelStore: dict[str, LanguageModel] = {
