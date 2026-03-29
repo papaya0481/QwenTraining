@@ -1,5 +1,7 @@
 import ast
+import concurrent.futures
 import json
+import os
 import re
 import subprocess
 import sys
@@ -184,7 +186,11 @@ class SafePythonValidator:
 			import subprocess
 			subprocess.Popen = None
 
-			__builtins__["help"] = None
+			try:
+				import builtins as _builtins
+				_builtins.help = None
+			except Exception:
+				pass
 			sys.modules["ipdb"] = None
 			sys.modules["joblib"] = None
 			sys.modules["resource"] = None
@@ -379,19 +385,25 @@ class ModelResponseCodeExecutor:
 		test_samples: Any,
 		fn_name: Optional[str] = None,
 		mode: str = "auto",
+		use_multiprocessing: bool = False,
+		max_workers: Optional[int] = None,
 	) -> List[Dict[str, Any]]:
 		code = self.extractor.extract(model_response)
 		cases = self.normalizer.normalize(test_samples)
 		run_mode = self._resolve_mode(code=code, fn_name=fn_name, cases=cases, mode=mode)
 
+		worker_results = self._run_cases(
+			code=code,
+			cases=cases,
+			run_mode=run_mode,
+			fn_name=fn_name,
+			use_multiprocessing=use_multiprocessing,
+			max_workers=max_workers,
+		)
+
 		results: List[Dict[str, Any]] = []
 		for case in cases:
-			worker_result = self.validator.run_case(
-				code=code,
-				case_input=case.input_data,
-				mode=run_mode,
-				fn_name=fn_name,
-			)
+			worker_result = worker_results[case.index]
 
 			row = {
 				"index": case.index,
@@ -426,6 +438,59 @@ class ModelResponseCodeExecutor:
 			results.append(row)
 
 		return results
+
+	def _run_cases(
+		self,
+		code: str,
+		cases: Sequence[NormalizedTestCase],
+		run_mode: str,
+		fn_name: Optional[str],
+		use_multiprocessing: bool,
+		max_workers: Optional[int],
+	) -> Dict[int, Dict[str, Any]]:
+		if not use_multiprocessing or len(cases) <= 1:
+			return {
+				case.index: self.validator.run_case(
+					code=code,
+					case_input=case.input_data,
+					mode=run_mode,
+					fn_name=fn_name,
+				)
+				for case in cases
+			}
+
+		resolved_workers = max_workers or min(len(cases), (os.cpu_count() or 2))
+		by_index: Dict[int, Dict[str, Any]] = {}
+
+		def _thread_task(case: NormalizedTestCase) -> Dict[str, Any]:
+			result = self.validator.run_case(
+				code=code,
+				case_input=case.input_data,
+				mode=run_mode,
+				fn_name=fn_name,
+			)
+			return {"index": case.index, "result": result}
+
+		# Each task still runs generated code in an isolated Python subprocess.
+		# Threads here only schedule those subprocess validations concurrently.
+		with concurrent.futures.ThreadPoolExecutor(max_workers=resolved_workers) as executor:
+			future_to_index = {
+				executor.submit(_thread_task, case): case.index for case in cases
+			}
+			for future in concurrent.futures.as_completed(future_to_index):
+				idx = future_to_index[future]
+				try:
+					data = future.result()
+					by_index[data["index"]] = data["result"]
+				except Exception as exc:
+					by_index[idx] = {
+						"ok": False,
+						"error_code": "CONCURRENT_WORKER_ERROR",
+						"error_message": repr(exc),
+						"exec_ms": None,
+					}
+
+		return by_index
 
 	@staticmethod
 	def _resolve_mode(
@@ -503,3 +568,45 @@ __all__ = [
 	"SafePythonValidator",
 	"ModelResponseCodeExecutor",
 ]
+
+
+def minimal_runnable_example() -> Dict[str, List[Dict[str, Any]]]:
+	"""A minimal example for both testcase formats and optional multiprocessing."""
+	executor = ModelResponseCodeExecutor(timeout=2, memory_limit_mb=512)
+
+	model_response = """
+这里是模型回答：
+```python
+def add(a, b):
+	return a + b
+```
+"""
+
+	list_style_samples = [
+		{"input": [1, 2], "output": 3},
+		{"input": [10, -3], "output": 7},
+	]
+
+	dict_style_samples = {
+		"input": [[4, 6], [5, 8]],
+		"output": [10, 13],
+	}
+
+	list_style_results = executor.evaluate(
+		model_response=model_response,
+		test_samples=list_style_samples,
+		fn_name="add",
+		use_multiprocessing=True,
+	)
+
+	dict_style_results = executor.evaluate(
+		model_response=model_response,
+		test_samples=dict_style_samples,
+		fn_name="add",
+		use_multiprocessing=True,
+	)
+
+	return {
+		"list_style": list_style_results,
+		"dict_style": dict_style_results,
+	}
