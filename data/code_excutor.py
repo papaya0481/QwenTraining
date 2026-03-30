@@ -267,10 +267,6 @@ class SafePythonValidator:
                 sys.stdout = old_stdout
 
 
-        def _timeout_handler(signum, frame):
-            raise TimeoutError("Time limit exceeded")
-
-
         def main():
             payload = json.loads(sys.stdin.read())
             code = payload["code"]
@@ -281,6 +277,9 @@ class SafePythonValidator:
             memory_limit_mb = int(payload.get("memory_limit_mb", 1024))
 
             _reliability_guard(memory_limit_mb * 1024 * 1024)
+
+            def _timeout_handler(signum, frame):
+                raise TimeoutError(f"Time limit exceeded for {timeout} seconds")
 
             signal.signal(signal.SIGALRM, _timeout_handler)
             signal.alarm(timeout)

@@ -58,8 +58,9 @@ def _sample_result(solution, raw_test_cases):
     failed = [item for item in results if not item.get("passed", False)]
     if failed:
         reasons = {
-            "error_code": [item.get("error_code", "unknown") for item in failed],
-            "error_message": [item.get("error_message", "unknown") for item in failed],
+            "pass": [item.get("passed", False) for item in results],
+            "error_code": [item.get("error_code", "UNKNOWN") if not item.get("passed", False) else "" for item in results],
+            "error_message": [item.get("error_message", "Unknown Error") if not item.get("passed", False) else "" for item in results],
         }
         return False, reasons
 
@@ -142,5 +143,6 @@ if __name__ == "__main__":
     # 保存最终的训练数据（包含所有样本，pass列标记是否通过）
     final_data = marked_code_domain_data.map(format_sample, num_proc=8)
     final_data = final_data.remove_columns(["_sample_passed", "_error"])
-    final_data.to_json("/data2/ruixin/cleaned_openthoughts.jsonl", orient="records", lines=True)
+    final_data = final_data.remove_columns(["problem", "deepseek_reasoning", "deepseek_solution", "ground_truth_solution", "domain", "source", "starter_code"])
+    final_data.save_to_disk("/data2/ruixin/cleaned_openthoughts")
     print("Final cleaned data saved. Total samples:", len(final_data))
