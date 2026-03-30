@@ -3,7 +3,7 @@ import importlib.util
 import json
 from pathlib import Path
 
-SYSTEM_PROMPT = ""
+SYSTEM_PROMPT = "You will be given a question (problem specification) and will generate a correct Python program that matches the specification and passes all tests. "
 PREFIX_USER_PROMPT = """
 Generate an executable Python function generated from the given prompt. The function should take stdin as input and print the output."""
 
@@ -57,10 +57,10 @@ def _sample_result(solution, raw_test_cases):
 
     failed = [item for item in results if not item.get("passed", False)]
     if failed:
-        reasons = "; ".join(
-            f"[{item.get('error_code', 'UNKNOWN')}] {item.get('error_message', '')}"
-            for item in failed
-        )
+        reasons = {
+            "error_code": [item.get("error_code", "unknown") for item in failed],
+            "error_message": [item.get("error_message", "unknown") for item in failed],
+        }
         return False, reasons
 
     return True, None
@@ -72,7 +72,7 @@ def mark_sample_passed(sample):
     )
     return {
         "_sample_passed": passed,
-        "_error_reason": error_reason or "",
+        "_error": "" if error_reason is None else (error_reason if isinstance(error_reason, str) else json.dumps(error_reason)),
     }
 
 
@@ -114,20 +114,33 @@ if __name__ == "__main__":
     spec.loader.exec_module(code_executor_module)
     ModelResponseCodeExecutor = code_executor_module.ModelResponseCodeExecutor
 
-    executor = ModelResponseCodeExecutor(timeout=8, memory_limit_mb=2048)
+    executor = ModelResponseCodeExecutor(timeout=10, memory_limit_mb=2048)
 
     trimmed_code_domain_data = code_domain_data.map(trim_test_cases)
     marked_code_domain_data = trimmed_code_domain_data.map(mark_sample_passed, num_proc=8)
-    passed_code_domain_data = marked_code_domain_data.filter(lambda sample: sample["_sample_passed"])
-    passed_code_domain_data = passed_code_domain_data.remove_columns(["_sample_passed", "_error_reason"])
-    print("Passed samples:", len(passed_code_domain_data))
+    passed_count = sum(1 for s in marked_code_domain_data if s["_sample_passed"])
+    print(f"Passed samples: {passed_count} / {len(marked_code_domain_data)}")
 
-    # 保存未通过的样本（只保留 solution、test_cases、error_reason）
-    failed_code_domain_data = marked_code_domain_data.filter(lambda sample: not sample["_sample_passed"])
-    failed_code_domain_data = failed_code_domain_data.select_columns(["deepseek_solution", "test_cases", "_error_reason"])
-    failed_code_domain_data = failed_code_domain_data.rename_column("_error_reason", "error_reason")
-    failed_code_domain_data.save_to_disk("failed_code_domain_data")
-    print("Failed samples:", len(failed_code_domain_data))
-    
-    # # 临时保存通过测试的样本，避免后续处理过程中出现问题导致数据丢失。
-    # passed_code_domain_data.save_to_disk("passed_code_domain_data")
+    # 开始排布样本，构建最终的训练数据格式。
+    def format_sample(sample):
+        if not sample["deepseek_reasoning"].strip().startswith("<think>") and not sample["deepseek_reasoning"].strip().endswith("</think>"):
+            wrapped_reasoning = f"<think>\n{sample['deepseek_reasoning']}\n</think>\n"
+        else:
+            wrapped_reasoning = sample["deepseek_reasoning"]
+        passed = sample["_sample_passed"]
+        return {
+            "system": SYSTEM_PROMPT,
+            "user": PREFIX_USER_PROMPT + "\n" + sample["problem"],
+            "assistant": wrapped_reasoning + "\n" + sample["deepseek_solution"],
+            "test_cases": sample["test_cases"],
+            "source_dataset": "OpenThoughts-114k",
+            "task": "code_generation",
+            "pass": passed,
+            "errors": "" if passed else sample["_error"],
+        }
+
+    # 保存最终的训练数据（包含所有样本，pass列标记是否通过）
+    final_data = marked_code_domain_data.map(format_sample, num_proc=8)
+    final_data = final_data.remove_columns(["_sample_passed", "_error"])
+    final_data.to_json("/data2/ruixin/cleaned_openthoughts.jsonl", orient="records", lines=True)
+    print("Final cleaned data saved. Total samples:", len(final_data))
