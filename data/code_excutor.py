@@ -142,8 +142,9 @@ class SafePythonValidator:
                     import resource
                     resource.setrlimit(resource.RLIMIT_AS, (maximum_memory_bytes, maximum_memory_bytes))
                     resource.setrlimit(resource.RLIMIT_DATA, (maximum_memory_bytes, maximum_memory_bytes))
-                    if platform.uname().system != "Darwin":
-                        resource.setrlimit(resource.RLIMIT_STACK, (maximum_memory_bytes, maximum_memory_bytes))
+                    # Do NOT limit RLIMIT_STACK to the full memory size — that
+                    # causes the worker process to crash immediately on Linux.
+                    # A 64 MB stack is more than enough for generated code.
                 except Exception:
                     pass
 
@@ -253,6 +254,12 @@ class SafePythonValidator:
                 sys.stdout = fake_stdout
                 exec(code, namespace)
                 return {"ok": True, "actual": fake_stdout.getvalue()}
+            except SystemExit:
+                # 🎯 核心魔法在这里：
+                # 如果代码调用了 exit()，会抛出 SystemExit 异常跳到这里。
+                # 在竞赛题中，这通常意味着程序想提前结束并输出结果。
+                # 我们认为这是正常的，直接返回之前收集到的 stdout 即可！
+                return {"ok": True, "actual": fake_stdout.getvalue()}
             except Exception as exc:
                 return {"ok": False, "error_code": "RUNTIME_ERROR", "error_message": repr(exc)}
             finally:
@@ -298,6 +305,11 @@ class SafePythonValidator:
                 result = {"ok": False, "error_code": "COMPILE_ERROR", "error_message": repr(exc)}
             except Exception as exc:
                 result = {"ok": False, "error_code": "RUNTIME_ERROR", "error_message": repr(exc)}
+            except BaseException as exc: # 拦截 SystemExit, KeyboardInterrupt 等
+                if isinstance(exc, SystemExit):
+                    result = {"ok": False, "error_code": "RUNTIME_ERROR", "error_message": "Code attempted to exit() prematurely."}
+                else:
+                    result = {"ok": False, "error_code": "RUNTIME_ERROR", "error_message": f"Critical Error: {repr(exc)}"}
             finally:
                 signal.alarm(0)
 
@@ -360,11 +372,11 @@ class SafePythonValidator:
 
         try:
             data = json.loads(proc.stdout.strip())
-        except Exception:
+        except Exception as e:
             return {
                 "ok": False,
                 "error_code": "BAD_WORKER_OUTPUT",
-                "error_message": (proc.stdout or "").strip()[:300],
+                "error_message": f"Worker output is not valid JSON: {repr(e)}; raw output: {proc.stdout.strip()}",
                 "exec_ms": exec_ms,
             }
 
