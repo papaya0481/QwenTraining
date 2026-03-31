@@ -46,8 +46,6 @@ def _sample_result(solution, raw_test_cases):
             model_response=solution,
             test_samples=test_samples,
             mode="stdio",
-            use_multiprocessing=True,
-            max_workers=16,
         )
     except Exception as e:
         return False, f"executor exception: {e}"
@@ -118,7 +116,7 @@ if __name__ == "__main__":
     executor = ModelResponseCodeExecutor(timeout=10, memory_limit_mb=2048)
 
     trimmed_code_domain_data = code_domain_data.map(trim_test_cases)
-    marked_code_domain_data = trimmed_code_domain_data.map(mark_sample_passed, num_proc=8)
+    marked_code_domain_data = trimmed_code_domain_data.map(mark_sample_passed, num_proc=32)
     passed_count = sum(1 for s in marked_code_domain_data if s["_sample_passed"])
     print(f"Passed samples: {passed_count} / {len(marked_code_domain_data)}")
 
@@ -141,8 +139,10 @@ if __name__ == "__main__":
         }
 
     # 保存最终的训练数据（包含所有样本，pass列标记是否通过）
-    final_data = marked_code_domain_data.map(format_sample, num_proc=8)
+    final_data = marked_code_domain_data.map(format_sample, num_proc=16)
     final_data = final_data.remove_columns(["_sample_passed", "_error"])
     final_data = final_data.remove_columns(["problem", "deepseek_reasoning", "deepseek_solution", "ground_truth_solution", "domain", "source", "starter_code"])
-    final_data.save_to_disk("/data2/ruixin/cleaned_openthoughts")
+    # final_data.save_to_disk("/data2/ruixin/cleaned_openthoughts")
+    import datasets
+    final_data.push_to_hub("BigfufuOuO/code_gen")
     print("Final cleaned data saved. Total samples:", len(final_data))
