@@ -245,8 +245,8 @@ if __name__ == "__main__":
     total_len = len(passed_data)
     print(f"Total passed samples: {total_len}")
 
-    # 2. 划分为 SFT (前 5000 条) 和 RL (剩余的样本)
-    sft_size = min(5000, total_len) # 防止总数据量不足 5000 报错
+    # 2. 划分为 SFT (前 6000 条) 和 RL (剩余的样本)
+    sft_size = min(6000, total_len) # 防止总数据量不足 6000 报错
     
     sft_data = passed_data.select(range(sft_size))
     rl_data = passed_data.select(range(sft_size, total_len))
@@ -254,10 +254,12 @@ if __name__ == "__main__":
     
     # 3. 为 SFT 数据划分 train 和 test (这里默认划出 10% 作为 test，即 500 条)
     # train_test_split 会自动返回一个包含 "train" 和 "test" 的 DatasetDict
-    sft_dataset_dict = sft_data.train_test_split(test_size=0.1, seed=42)
+    sft_dataset_dict = sft_data.train_test_split(test_size=0.08, seed=42)
     
     # 5. 构建 10000 条的 RL 数据集
     rl_target_size = 10000
+    failed_data = passed_data.filter(lambda x: x["pass"] == False)
+    failed_data_count = 0
 
     if unused_count < rl_target_size:
         # 如果剩下没用过的数据不够，计算需要从 SFT 借多少条
@@ -269,6 +271,10 @@ if __name__ == "__main__":
         
         # 拼接：未使用的 Pass 数据 + SFT 重合数据
         rl_data = concatenate_datasets([rl_data, overlap_data_for_rl])
+        # 添加一部分failed数据来补充到12000条
+        failed_to_add = failed_data.select(range(max(failed_data_count, rl_target_size - len(rl_data))))
+        rl_data = concatenate_datasets([rl_data, failed_to_add])
+        print(f"最终 RL 数据集大小：{len(rl_data)} 条（包含 {len(overlap_data_for_rl)} 条 SFT 重合数据和 {len(failed_to_add)} 条 failed 数据）")
     
     # 4. 为 RL 数据构造 DatasetDict (通常 RL 只需要 train split)
     rl_dataset_dict = DatasetDict({
