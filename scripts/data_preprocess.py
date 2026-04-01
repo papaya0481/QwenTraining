@@ -45,6 +45,9 @@ register_dataset(
 if __name__ == '__main__':
     dataset = load_dataset('codegen1_train:sft', use_hf=True)[0]
     print(f'dataset: {dataset}')
+    
+    dataset = load_dataset('codegen1_train:rl', use_hf=True)[0]
+    print(f'dataset: {dataset}')
 
     dataset = load_dataset('codegen1_sft_val', use_hf=True)[0]
     print(f'dataset: {dataset}')
