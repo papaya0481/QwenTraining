@@ -1,5 +1,9 @@
 # 显存占用：22GB
-CUDA_VISIBLE_DEVICES=7 \
+CUDA_VISIBLE_DEVICES=7
+
+# 参数解释
+# --external_plugins 使用外部插件进行数据预处理
+# --use_hf 使用 Hugging Face 的 模型和数据集下载
 swift sft \
     --model Qwen/Qwen3.5-0.8B \
     --tuner_type lora \
