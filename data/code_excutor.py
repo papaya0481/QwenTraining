@@ -401,6 +401,61 @@ class ModelResponseCodeExecutor:
         fn_name: Optional[str] = None,
         mode: str = "auto",
     ) -> List[Dict[str, Any]]:
+        """_summary_
+
+        Args:
+            model_response (str): _description_
+            test_samples (Any): _description_
+            fn_name (Optional[str], optional): _description_. Defaults to None.
+            mode (str, optional): "auto", "call_based", or "stdio". Defaults to "auto".
+                - for "auto" mode, the executor will try to infer the best mode based on code and test samples.
+                - "call_based" mode means the code defines functions and the executor will call them with test inputs.
+                    1. 函数有多个参数, 按位置传参 *args
+                    ```
+                    {
+                        "inputs": [
+                            [1, 2],       // 第一个测试用例，对应 func(1, 2)
+                            [10, -3]      // 第二个测试用例，对应 func(10, -3)
+                        ],
+                        "outputs": [3, 7]
+                    }
+                    ```
+                    2. 函数有多个参数（按关键字传参
+                    ```
+                    {
+                        "inputs": [
+                            {"a": 1, "b": 2},       // 对应 func(a=1, b=2)
+                            {"a": 10, "b": -3}      // 对应 func(a=10, b=-3)
+                        ],
+                        "outputs": [3, 7]
+                    }
+                    ```
+                    3. 函数只有一个参数
+                    ```
+                    {
+                        "inputs": [5, 10],   // 分别对应 func(5) 和 func(10)
+                        "outputs": [25, 100]
+                    }
+                    ```
+                    
+                - "stdio" mode.
+                    每一个测试用例的输入会被转换成字符串，提供给代码的标准输入，代码的标准输出会被收集并与预期输出进行对比。
+                    ```
+                    {
+                        "input": [
+                        "1 2",       // 第一个测试用例，提供给代码的 stdin
+                        "10 -3"      // 第二个测试用例，提供给代码的 stdin
+                        ],
+                        "output": [
+                        "3",         // 第一个测试用例的预期 stdout
+                        "7"          // 第二个测试用例的预期 stdout
+                        ]
+                    }
+                    ```
+
+        Returns:
+            List[Dict[str, Any]]: _description_
+        """
         code = self.extractor.extract(model_response)
         cases = self.normalizer.normalize(test_samples)
         run_mode = self._resolve_mode(code=code, fn_name=fn_name, cases=cases, mode=mode)
