@@ -1,4 +1,4 @@
-from datasets import load_dataset, load_from_disk, concatenate_datasets
+from datasets import load_dataset, load_from_disk, concatenate_datasets, DatasetDict
 import importlib.util
 import json
 from pathlib import Path
@@ -233,7 +233,40 @@ if __name__ == "__main__":
     # final_data.save_to_disk("/data2/ruixin/qwen/merged_codegen_verified")
     # print(f"Saved. Total samples: {len(final_data)}")
     merged_data.push_to_hub("BigfufuOuO/codegen1_merged")
+    merged_data.save_to_disk("/data2/ruixin/qwen/merged_codegen1")
     
     # 把pass列=True的样本单独保存到一个新的数据集中，供后续分析和对比使用。
     passed_data = merged_data.filter(lambda x: x["pass"] == True)
-    passed_data.push_to_hub("BigfufuOuO/codegen1_merged_clean")
+    # passed_data.push_to_hub("BigfufuOuO/codegen1_merged_clean")
+    # 分割为sft，rl两部分，分为两个subset。全部都为pass=True的样本，sft总共5000，rl为剩下的。
+    # 1. 强烈建议先打乱数据，保证切分出的样本分布均匀
+    passed_data = passed_data.shuffle(seed=42)
+    
+    total_len = len(passed_data)
+    print(f"Total passed samples: {total_len}")
+
+    # 2. 划分为 SFT (前 5000 条) 和 RL (剩余的样本)
+    sft_size = min(5000, total_len) # 防止总数据量不足 5000 报错
+    
+    sft_data = passed_data.select(range(sft_size))
+    rl_data = passed_data.select(range(sft_size, total_len))
+    
+    # 3. 为 SFT 数据划分 train 和 test (这里默认划出 10% 作为 test，即 500 条)
+    # train_test_split 会自动返回一个包含 "train" 和 "test" 的 DatasetDict
+    sft_dataset_dict = sft_data.train_test_split(test_size=0.1, seed=42)
+    
+    # 4. 为 RL 数据构造 DatasetDict (通常 RL 只需要 train split)
+    rl_dataset_dict = DatasetDict({
+        "train": rl_data
+    })
+    
+    # 5. 推送到 Hugging Face，使用 config_name 来区分 Subset
+    repo_id = "BigfufuOuO/codegen1_merged_clean"
+    
+    print(f"Pushing SFT subset to {repo_id}...")
+    sft_dataset_dict.push_to_hub(repo_id, config_name="sft")
+    
+    print(f"Pushing RL subset to {repo_id}...")
+    rl_dataset_dict.push_to_hub(repo_id, config_name="rl")
+    
+    print("Done! Data successfully pushed as two subsets: 'sft' and 'rl'.")
