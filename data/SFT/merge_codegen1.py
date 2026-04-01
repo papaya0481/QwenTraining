@@ -250,10 +250,25 @@ if __name__ == "__main__":
     
     sft_data = passed_data.select(range(sft_size))
     rl_data = passed_data.select(range(sft_size, total_len))
+    unused_count = len(rl_data)
     
     # 3. 为 SFT 数据划分 train 和 test (这里默认划出 10% 作为 test，即 500 条)
     # train_test_split 会自动返回一个包含 "train" 和 "test" 的 DatasetDict
     sft_dataset_dict = sft_data.train_test_split(test_size=0.1, seed=42)
+    
+    # 5. 构建 10000 条的 RL 数据集
+    rl_target_size = 10000
+
+    if unused_count < rl_target_size:
+        # 如果剩下没用过的数据不够，计算需要从 SFT 借多少条
+        rl_shortage = rl_target_size - unused_count
+        print(f"RL 数据不足 {rl_target_size} 条，需要从 SFT 中借用 {rl_shortage} 条重合数据。")
+        
+        # 从 SFT 数据中抽取不足的部分
+        overlap_data_for_rl = sft_data.select(range(rl_shortage))
+        
+        # 拼接：未使用的 Pass 数据 + SFT 重合数据
+        rl_data = concatenate_datasets([rl_data, overlap_data_for_rl])
     
     # 4. 为 RL 数据构造 DatasetDict (通常 RL 只需要 train split)
     rl_dataset_dict = DatasetDict({
