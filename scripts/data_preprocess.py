@@ -1,8 +1,10 @@
 # Copyright (c) ModelScope Contributors. All rights reserved.
 from typing import Any, Dict, Optional
 
-import swift
-from swift.dataset import DatasetMeta, ResponsePreprocessor, load_dataset, register_dataset, MessagesPreprocessor
+from swift.dataset import (
+    DatasetMeta, load_dataset, register_dataset, MessagesPreprocessor,
+    SubsetDataset
+)
 
 
 class CodeGen1SFTPreprocessor(MessagesPreprocessor):
@@ -22,11 +24,30 @@ class CodeGen1SFTPreprocessor(MessagesPreprocessor):
 register_dataset(
     DatasetMeta(
         hf_dataset_id='BigfufuOuO/codegen1_merged_clean',
+        dataset_name='codegen1_train',
         preprocess_func=CodeGen1SFTPreprocessor(),
+        subsets=[SubsetDataset('sft', subset='sft', split=['train']),
+                 SubsetDataset('rl', subset='rl', split=['train']),
+                 SubsetDataset('defaults', subset='defaults', split=['train']),
+                 ],
+    )
+)
+
+register_dataset(
+    DatasetMeta(
+        hf_dataset_id='BigfufuOuO/codegen1_merged_clean',
+        dataset_name='codegen1_sft_val',
+        preprocess_func=CodeGen1SFTPreprocessor(),
+        subsets=[SubsetDataset('sft', subset='sft', split=['test']),]
     )
 )
 
 if __name__ == '__main__':
-    dataset = load_dataset(['BigfufuOuO/codegen1_merged_clean'], use_hf=True)[0]
+    dataset = load_dataset('codegen1_train:sft', use_hf=True)[0]
     print(f'dataset: {dataset}')
-    print(f'dataset[0]: {dataset[0]}')
+    
+    dataset = load_dataset('codegen1_train:rl', use_hf=True)[0]
+    print(f'dataset: {dataset}')
+
+    dataset = load_dataset('codegen1_sft_val', use_hf=True)[0]
+    print(f'dataset: {dataset}')

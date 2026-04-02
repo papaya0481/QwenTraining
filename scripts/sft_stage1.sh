@@ -8,7 +8,8 @@ swift sft \
     --model Qwen/Qwen3.5-0.8B \
     --tuner_type lora \
     --external_plugins scripts/data_preprocess.py \
-    --dataset BigfufuOuO/codegen1_merged_clean \
+    --dataset codegen1_train:sft#5000 \
+    --val_dataset codegen1_sft_val \
     --load_from_cache_file true \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
