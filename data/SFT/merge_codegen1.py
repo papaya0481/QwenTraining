@@ -247,10 +247,9 @@ if __name__ == "__main__":
 
     # 2. 划分为 SFT (前 5000 条) 和 RL (剩余的样本)
     sft_size = min(5500, total_len) # 防止总数据量不足 5000 报错
-    
-    sft_data = passed_data.select(range(sft_size))
+    sft_data = passed_data.filter(lambda x: len(x["assistant"]) <= 62000)
+    sft_data = sft_data.select(range(sft_size))
     # sft data添加: 过滤 assistant > 62000 字符的样本，避免它们干扰 SFT 训练。
-    sft_data = sft_data.filter(lambda x: len(x["assistant"]) <= 62000)
     
     rl_data = passed_data.select(range(sft_size, total_len))
     unused_count = len(rl_data)
