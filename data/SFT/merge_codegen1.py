@@ -245,16 +245,18 @@ if __name__ == "__main__":
     total_len = len(passed_data)
     print(f"Total passed samples: {total_len}")
 
-    # 2. 划分为 SFT (前 6000 条) 和 RL (剩余的样本)
-    sft_size = min(6000, total_len) # 防止总数据量不足 6000 报错
+    # 2. 划分为 SFT (前 5000 条) 和 RL (剩余的样本)
+    sft_size = min(5500, total_len) # 防止总数据量不足 5000 报错
+    sft_data = passed_data.filter(lambda x: len(x["assistant"]) <= 62000)
+    sft_data = sft_data.select(range(sft_size))
+    # sft data添加: 过滤 assistant > 62000 字符的样本，避免它们干扰 SFT 训练。
     
-    sft_data = passed_data.select(range(sft_size))
     rl_data = passed_data.select(range(sft_size, total_len))
     unused_count = len(rl_data)
     
     # 3. 为 SFT 数据划分 train 和 test (这里默认划出 10% 作为 test，即 500 条)
     # train_test_split 会自动返回一个包含 "train" 和 "test" 的 DatasetDict
-    sft_dataset_dict = sft_data.train_test_split(test_size=0.08, seed=42)
+    sft_dataset_dict = sft_data.train_test_split(test_size=0.1, seed=42)
     
     # 5. 构建 10000 条的 RL 数据集
     rl_target_size = 10000

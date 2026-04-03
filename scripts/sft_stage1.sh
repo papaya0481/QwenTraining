@@ -9,6 +9,7 @@ export CUDA_VISIBLE_DEVICES=3
 # --external_plugins 使用外部插件进行数据预处理
 # --use_hf 使用 Hugging Face 的 模型和数据集下载
 # --eval_on_start 在训练开始前进行一次评估
+# --torch_empty_cache_steps 每隔多少步清空一次 CUDA 缓存，减少显存占用. 调大可以增加吞吐量，但可能导致显存不足错误，调小可以减少显存占用，但可能降低吞吐量。根据实际情况调整。
 swift sft \
     --model Qwen/Qwen3.5-0.8B \
     --tuner_type lora \
