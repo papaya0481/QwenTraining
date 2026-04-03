@@ -1,6 +1,6 @@
 [submodule "ms-swift"]
 	path = ms-swift
-	url = https://github.com/papaya0481/ms-swift.git
+	url = git@github.com:papaya0481/ms-swift.git
 [submodule "ms-enclave"]
 	path = ms-enclave
-	url = https://github.com/papaya0481/ms-enclave.git
+	url = git@github.com:papaya0481/ms-enclave.git
