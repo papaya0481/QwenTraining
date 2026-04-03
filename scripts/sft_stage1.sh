@@ -4,6 +4,7 @@ CUDA_VISIBLE_DEVICES=7
 # 参数解释
 # --external_plugins 使用外部插件进行数据预处理
 # --use_hf 使用 Hugging Face 的 模型和数据集下载
+# --eval_on_start 在训练开始前进行一次评估
 swift sft \
     --model Qwen/Qwen3.5-0.8B \
     --tuner_type lora \
@@ -28,4 +29,5 @@ swift sft \
     --output_dir output \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
-    --use_hf
+    --use_hf \
+    --eval_on_start \
