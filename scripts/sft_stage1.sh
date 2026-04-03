@@ -38,5 +38,5 @@ swift sft \
     --use_hf \
     --eval_use_evalscope \
     --eval_dataset "live_code_bench" \
-    --eval_dataset_args '{"infer_backend": "vllm", "live_code_bench": {"trust_remote_code": true, "extra_params": {"start_date": "2023-01-01", "end_date": "2025-12-31"}}}' \
-    --eval_limit 10
+    --eval_dataset_args '{"live_code_bench": {"trust_remote_code": true, "extra_params": {"start_date": "2023-01-01", "end_date": "2025-12-31"}}}' \
+    --eval_limit 100
