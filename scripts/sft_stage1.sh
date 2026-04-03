@@ -1,9 +1,9 @@
 # 显存占用：22GB
-CUDA_VISIBLE_DEVICES=1
-export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-export HF_HOME=/root/shared-nvme/.cache/huggingface
-export HF_DATASETS_CACHE=/root/shared-nvme/.cache/huggingface/datasets
-export MODELSCOPE_CACHE=/root/shared-nvme/.cache/modelscope
+export CUDA_VISIBLE_DEVICES=3
+# export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+# export HF_HOME=/root/shared-nvme/.cache/huggingface
+# export HF_DATASETS_CACHE=/root/shared-nvme/.cache/huggingface/datasets
+# export MODELSCOPE_CACHE=/root/shared-nvme/.cache/modelscope
 
 # 参数解释
 # --external_plugins 使用外部插件进行数据预处理
@@ -13,7 +13,7 @@ swift sft \
     --model Qwen/Qwen3.5-0.8B \
     --tuner_type lora \
     --external_plugins scripts/data_preprocess.py \
-    --dataset codegen1_train:sft#5000 \
+    --dataset codegen1_train:sft \
     --val_dataset codegen1_sft_val \
     --load_from_cache_file true \
     --torch_dtype bfloat16 \
@@ -38,5 +38,5 @@ swift sft \
     --use_hf \
     --eval_use_evalscope \
     --eval_dataset "live_code_bench" \
-    --eval_dataset_args '{"live_code_bench": {"trust_remote_code": true, "extra_params": {"start_date": "2023-01-01", "end_date": "2025-12-31"}}}' \
-    --eval_limit 5
+    --eval_dataset_args '{"infer_backend": "vllm", "live_code_bench": {"trust_remote_code": true, "extra_params": {"start_date": "2023-01-01", "end_date": "2025-12-31"}}}' \
+    --eval_limit 10
