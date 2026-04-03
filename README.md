@@ -41,3 +41,13 @@ export LD_LIBRARY_PATH=/data/wuli_error/miniconda3/envs/llmqw/lib:$LD_LIBRARY_PA
 ```
 uv pip install 'ms-enclave[docker]'
 ```
+## MS-Swift 
+### 安装
+```
+cd ms-swift
+uv pip install -e .
+```
+安装vllm, deepspeed.
+```
+uv pip install vllm deepspeed --torch-backend=auto
+```

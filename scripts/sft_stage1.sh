@@ -1,5 +1,6 @@
 # 显存占用：22GB
 export CUDA_VISIBLE_DEVICES=3
+export CUDA_HOME=$CONDA_PREFIX
 # export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 # export HF_HOME=/root/shared-nvme/.cache/huggingface
 # export HF_DATASETS_CACHE=/root/shared-nvme/.cache/huggingface/datasets
@@ -15,7 +16,7 @@ swift sft \
     --tuner_type lora \
     --external_plugins scripts/data_preprocess.py \
     --dataset codegen1_train:sft \
-    --val_dataset codegen1_sft_val \
+    --val_dataset codegen1_sft_val#20 \
     --load_from_cache_file true \
     --torch_dtype bfloat16 \
     --num_train_epochs 1 \
@@ -25,6 +26,9 @@ swift sft \
     --lora_rank 16 \
     --lora_alpha 32 \
     --target_modules all-linear \
+    --freeze_vit true \
+    --freeze_llm false \
+    --freeze_aligner true \
     --gradient_accumulation_steps 16 \
     --eval_steps 1 \
     --save_steps 1 \
@@ -37,7 +41,9 @@ swift sft \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
     --use_hf \
+    --deepspeed "zero2" \
     --eval_use_evalscope \
     --eval_dataset "live_code_bench" \
     --eval_dataset_args '{"live_code_bench": {"trust_remote_code": true, "extra_params": {"start_date": "2023-01-01", "end_date": "2025-12-31"}}}' \
-    --eval_limit 100
+    # --extra_eval_args '{"infer_backend": "vllm", "vllm_gpu_memory_utilization": 0.9, "vllm_reserved_memory_gb": 2.0, "vllm_tensor_parallel_size": 1, "vllm_pipeline_parallel_size": 1, "vllm_max_num_seqs": 1}' \
+    --eval_limit 10
