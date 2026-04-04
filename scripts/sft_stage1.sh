@@ -1,7 +1,10 @@
 # 显存占用：22GB
-export CUDA_VISIBLE_DEVICES=3,4
+export CUDA_VISIBLE_DEVICES=3
 export CUDA_HOME=$CONDA_PREFIX
-export NPROC_PER_NODE=2
+# export NPROC_PER_NODE=1
+# export VLLM_HOST_IP=127.0.0.1
+# export NCCL_SOCKET_IFNAME=lo
+# export GLOO_SOCKET_IFNAME=lo
 # export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 # export HF_HOME=/root/shared-nvme/.cache/huggingface
 # export HF_DATASETS_CACHE=/root/shared-nvme/.cache/huggingface/datasets
@@ -12,6 +15,7 @@ export NPROC_PER_NODE=2
 # --use_hf 使用 Hugging Face 的 模型和数据集下载
 # --eval_on_start 在训练开始前进行一次评估
 # --torch_empty_cache_steps 每隔多少步清空一次 CUDA 缓存，减少显存占用. 调大可以增加吞吐量，但可能导致显存不足错误，调小可以减少显存占用，但可能降低吞吐量。根据实际情况调整。
+# --freeze-vit 冻结visual层的权重，减少训练时的显存占用和计算量。根据实际情况调整。
 swift sft \
     --model Qwen/Qwen3.5-0.8B \
     --tuner_type lora \
@@ -46,5 +50,6 @@ swift sft \
     --eval_use_evalscope \
     --eval_dataset "live_code_bench" \
     --eval_dataset_args '{"live_code_bench": {"trust_remote_code": true, "extra_params": {"start_date": "2023-01-01", "end_date": "2025-12-31"}}}' \
-    --extra_eval_args '{"infer_backend": "vllm", "max_tokens": 512}' \
+    --extra_eval_args '{"infer_backend": "vllm"}' \
+    --eval_generation_config '{"max_tokens": 1024}' \
     --eval_limit 10
