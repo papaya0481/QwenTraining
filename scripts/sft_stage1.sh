@@ -1,6 +1,7 @@
 # 显存占用：22GB
-export CUDA_VISIBLE_DEVICES=3
+export CUDA_VISIBLE_DEVICES=3,4
 export CUDA_HOME=$CONDA_PREFIX
+export NPROC_PER_NODE=2
 # export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 # export HF_HOME=/root/shared-nvme/.cache/huggingface
 # export HF_DATASETS_CACHE=/root/shared-nvme/.cache/huggingface/datasets
@@ -34,7 +35,7 @@ swift sft \
     --save_steps 1 \
     --save_total_limit 2 \
     --logging_steps 5 \
-    --max_length 4096 \
+    --max_length 2048 \
     --truncation_strategy right \
     --torch_empty_cache_steps 1 \
     --output_dir output \
@@ -45,5 +46,5 @@ swift sft \
     --eval_use_evalscope \
     --eval_dataset "live_code_bench" \
     --eval_dataset_args '{"live_code_bench": {"trust_remote_code": true, "extra_params": {"start_date": "2023-01-01", "end_date": "2025-12-31"}}}' \
-    # --extra_eval_args '{"infer_backend": "vllm", "vllm_gpu_memory_utilization": 0.9, "vllm_reserved_memory_gb": 2.0, "vllm_tensor_parallel_size": 1, "vllm_pipeline_parallel_size": 1, "vllm_max_num_seqs": 1}' \
+    --extra_eval_args '{"infer_backend": "vllm", "max_tokens": 512}' \
     --eval_limit 10
