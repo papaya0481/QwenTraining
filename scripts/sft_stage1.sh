@@ -16,6 +16,7 @@ export CUDA_HOME=$CONDA_PREFIX
 # --eval_on_start 在训练开始前进行一次评估
 # --torch_empty_cache_steps 每隔多少步清空一次 CUDA 缓存，减少显存占用. 调大可以增加吞吐量，但可能导致显存不足错误，调小可以减少显存占用，但可能降低吞吐量。根据实际情况调整。
 # --freeze-vit 冻结visual层的权重，减少训练时的显存占用和计算量。根据实际情况调整。
+# --extra_eval_args 参考 GRPO 的 vLLM 使用方式，优先限制并发和显存占比，避免训练中评测拉起 vLLM 时 OOM。
 swift sft \
     --model Qwen/Qwen3.5-0.8B \
     --tuner_type lora \
@@ -50,6 +51,6 @@ swift sft \
     --eval_use_evalscope \
     --eval_dataset "live_code_bench" \
     --eval_dataset_args '{"live_code_bench": {"trust_remote_code": true, "extra_params": {"start_date": "2023-01-01", "end_date": "2025-12-31"}}}' \
-    --extra_eval_args '{"infer_backend": "vllm"}' \
+    --extra_eval_args '{"infer_backend": "vllm", "eval_sync_mode": true, "vllm_gpu_memory_utilization": 0.6, "vllm_reserved_memory_gb": 4.0, "vllm_max_num_seqs": 1, "vllm_enable_prefix_caching": false, "vllm_disable_custom_all_reduce": true}' \
     --eval_generation_config '{"max_tokens": 1024}' \
     --eval_limit 10
