@@ -24,7 +24,7 @@ def _run_single_stage(*, model_id: str, lora_path: Optional[str], stage_name: st
 
     gpu_memory_util = float(os.environ.get("VLLM_GPU_MEMORY_UTILIZATION", "0.3"))
     max_num_seqs = int(os.environ.get("VLLM_MAX_NUM_SEQS", "1"))
-    tensor_parallel_size = int(os.environ.get("VLLM_TP_SIZE", "1"))
+    tensor_parallel_size = int(os.environ.get("VLLM_TP_SIZE", "2"))
     pipeline_parallel_size = int(os.environ.get("VLLM_PP_SIZE", "1"))
     max_tokens = int(os.environ.get("MAX_TOKENS", "32"))
     enforce_eager = _to_bool(os.environ.get("VLLM_ENFORCE_EAGER"), default=False)
@@ -95,7 +95,7 @@ def run_vllm_two_stage_smoke_test() -> int:
 
     model_id = os.environ.get("MODEL_ID", "Qwen/Qwen3.5-0.8B")
     lora_path = os.environ.get(
-        "LORA_PATH", "/data/wuli_error/WRX/QwenTraining/output/v37-20260403-202951/checkpoint-2"
+        "LORA_PATH", "/root/lg/QwenTraining/output/v0-20260404-174524/checkpoint-1"
     )
 
     print("[INFO] Stage-1: vLLM load base model only")

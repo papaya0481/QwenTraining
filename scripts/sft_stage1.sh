@@ -1,14 +1,17 @@
 # 显存占用：22GB
-export CUDA_VISIBLE_DEVICES=3
-export CUDA_HOME=$CONDA_PREFIX
-# export NPROC_PER_NODE=1
-# export VLLM_HOST_IP=127.0.0.1
+# export CUDA_VISIBLE_DEVICES=3
+# export CUDA_HOME=$CONDA_PREFIX
+export NPROC_PER_NODE=2
+# export NCCL_P2P_DISABLE=1
+# export NCCL_SHM_DISABLE=1
 # export NCCL_SOCKET_IFNAME=lo
-# export GLOO_SOCKET_IFNAME=lo
-# export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-# export HF_HOME=/root/shared-nvme/.cache/huggingface
-# export HF_DATASETS_CACHE=/root/shared-nvme/.cache/huggingface/datasets
-# export MODELSCOPE_CACHE=/root/shared-nvme/.cache/modelscope
+# export VLLM_LOGGING_LEVEL=DEBUG
+# 训练进程内拉起 vLLM 时，fork 容易继承 CUDA/NCCL 上下文导致卡住，使用 spawn 更稳。
+# export VLLM_WORKER_MULTIPROC_METHOD=spawn
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export HF_HOME=/root/shared-nvme/.cache/huggingface
+export HF_DATASETS_CACHE=/root/shared-nvme/.cache/huggingface/datasets
+export MODELSCOPE_CACHE=/root/shared-nvme/.cache/modelscope
 
 # 参数解释
 # --external_plugins 使用外部插件进行数据预处理
@@ -25,22 +28,23 @@ swift sft \
     --val_dataset codegen1_sft_val#20 \
     --load_from_cache_file true \
     --torch_dtype bfloat16 \
-    --num_train_epochs 1 \
+    --num_train_epochs 2 \
     --per_device_train_batch_size 1 \
     --per_device_eval_batch_size 1 \
     --learning_rate 1e-4 \
-    --lora_rank 16 \
-    --lora_alpha 32 \
+    --lora_rank 32 \
+    --lora_alpha 64 \
     --target_modules all-linear \
     --freeze_vit true \
     --freeze_llm false \
     --freeze_aligner true \
+    --attn_impl flash_attention_2 \
     --gradient_accumulation_steps 16 \
-    --eval_steps 1 \
-    --save_steps 1 \
+    --eval_steps 2 \
+    --save_steps 2 \
     --save_total_limit 2 \
     --logging_steps 5 \
-    --max_length 2048 \
+    --max_length 5000 \
     --truncation_strategy right \
     --torch_empty_cache_steps 1 \
     --output_dir output \
@@ -48,9 +52,9 @@ swift sft \
     --dataloader_num_workers 4 \
     --use_hf \
     --deepspeed "zero2" \
-    --eval_use_evalscope \
-    --eval_dataset "live_code_bench" \
-    --eval_dataset_args '{"live_code_bench": {"trust_remote_code": true, "extra_params": {"start_date": "2023-01-01", "end_date": "2025-12-31"}}}' \
-    --extra_eval_args '{"infer_backend": "vllm", "eval_sync_mode": true, "vllm_gpu_memory_utilization": 0.6, "vllm_reserved_memory_gb": 4.0, "vllm_max_num_seqs": 1, "vllm_enable_prefix_caching": false, "vllm_disable_custom_all_reduce": true}' \
-    --eval_generation_config '{"max_tokens": 1024}' \
-    --eval_limit 10
+    --gradient_checkpointing true \
+    # --eval_use_evalscope \
+    # --eval_dataset "live_code_bench" \
+    # --eval_dataset_args '{"live_code_bench": {"trust_remote_code": true, "extra_params": {"start_date": "2023-01-01", "end_date": "2025-12-31"}}}' \
+    # --eval_generation_config '{"max_tokens": 4096}' \
+    # --eval_limit 50
