@@ -1,4 +1,6 @@
 *.pyc
 
 output/
+eval_output/
+result/
 .vscode/
