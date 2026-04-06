@@ -47,7 +47,6 @@ swift sft \
     --logging_steps 5 \
     --max_length 5000 \
     --truncation_strategy right \
-    --torch_empty_cache_steps 1 \
     --output_dir output \
     --warmup_ratio 0.05 \
     --dataloader_num_workers 4 \
