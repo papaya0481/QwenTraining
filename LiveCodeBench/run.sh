@@ -6,7 +6,10 @@ python -m lcb_runner.runner.main --model Qwen/Qwen3.5-0.8B \
      --vllm_max_gpu_memory 0.9 \
      --evaluate --n 1 --start_date 2023-01-01
 
-# python -m pdb lcb_runner/runner/main.py --model Qwen/Qwen3.5-0.8B \
+# 侧载LoRA权重示例（与 swift eval --adapters 等效）：
+# python -m lcb_runner.runner.main --model Qwen/Qwen3.5-0.8B \
 #      --scenario codegeneration \
 #      --vllm_max_gpu_memory 0.9 \
-#      --evaluate --n 1
+#      --evaluate --n 1 --start_date 2023-01-01 \
+#      --lora_path output/v52-20260404-111420/checkpoint-1 \
+#      --vllm_max_lora_rank 32

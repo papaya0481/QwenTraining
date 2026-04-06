@@ -1,6 +1,7 @@
 try:
     from transformers import AutoTokenizer
     from vllm import LLM, SamplingParams
+    from vllm.lora.request import LoRARequest
 except ImportError as e:
     raise ImportError(f"Failed to import vLLM: {e}")
 
@@ -13,6 +14,17 @@ class VLLMRunner(BaseRunner):
         model_tokenizer_path = (
             model.model_name if args.local_model_path is None else args.local_model_path
         )
+        self.lora_request = None
+        use_lora = getattr(args, "lora_path", None) is not None
+        lora_kwargs = {}
+        if use_lora:
+            lora_kwargs["enable_lora"] = True
+            lora_kwargs["max_lora_rank"] = args.vllm_max_lora_rank
+            self.lora_request = LoRARequest(
+                lora_name="adapter",
+                lora_int_id=1,
+                lora_path=args.lora_path,
+            )
         self.llm = LLM(
             model=model_tokenizer_path,
             tokenizer=model_tokenizer_path,
@@ -23,6 +35,7 @@ class VLLMRunner(BaseRunner):
             enable_prefix_caching=args.enable_prefix_caching,
             trust_remote_code=args.trust_remote_code,
             gpu_memory_utilization=args.vllm_max_gpu_memory,
+            **lora_kwargs,
         )
         self.sampling_params = SamplingParams(
             n=self.args.n,
@@ -49,7 +62,11 @@ class VLLMRunner(BaseRunner):
             remaining_prompts.append(prompt)
             remaining_indices.append(prompt_index)
         if remaining_prompts:
-            vllm_outputs = self.llm.generate(remaining_prompts, self.sampling_params)
+            vllm_outputs = self.llm.generate(
+                remaining_prompts,
+                self.sampling_params,
+                lora_request=self.lora_request,
+            )
             if self.args.use_cache:
                 assert len(remaining_prompts) == len(vllm_outputs)
                 for index, remaining_prompt, vllm_output in zip(

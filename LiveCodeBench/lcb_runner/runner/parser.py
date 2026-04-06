@@ -143,6 +143,18 @@ def get_args():
         default="0.9",
         help="Max GPU memory to use for vllm (e.g., '0.9' for 90%)",
     )
+    parser.add_argument(
+        "--lora_path",
+        type=str,
+        default=None,
+        help="Path to LoRA adapter weights to sideload during inference (vllm only)",
+    )
+    parser.add_argument(
+        "--vllm_max_lora_rank",
+        type=int,
+        default=32,
+        help="Max LoRA rank for vllm (must match the rank used during training)",
+    )
 
     args = parser.parse_args()
 
