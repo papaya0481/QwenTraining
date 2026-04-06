@@ -45,7 +45,7 @@ def _sample_result(solution, raw_test_cases):
         results = executor.evaluate(
             model_response=solution,
             test_samples=test_samples,
-            mode="stdio",
+            mode="auto",
         )
     except Exception as e:
         return False, f"executor exception: {e}"

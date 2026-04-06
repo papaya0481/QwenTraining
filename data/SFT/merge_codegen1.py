@@ -30,7 +30,7 @@ def parse_test_cases(raw_test_cases):
     return None
 
 
-def _sample_result(solution, raw_test_cases, mode="stdio"):
+def _sample_result(solution, raw_test_cases, mode="auto"):
     """Returns (passed: bool, error_reason: str | None)"""
     solution = solution or ""
     test_samples = parse_test_cases(raw_test_cases)
@@ -67,7 +67,7 @@ def mark_sample_passed(sample):
     passed, error_reason = _sample_result(
         sample.get("assistant", ""),
         sample.get("test_cases"),
-        mode=sample.get("fn_mode", "stdio")
+        mode=sample.get("fn_mode", "auto")
     )
     return {
         "_sample_passed": passed,
@@ -210,21 +210,21 @@ if __name__ == "__main__":
     # merged_passed = merged_data.filter(lambda x: x["pass"] == True)
     # print(f"Samples with pass=True: {len(merged_passed)} / {len(merged_data)}")
 
-    # # Load code executor
-    # executor_path = Path(__file__).resolve().parents[1] / "code_excutor.py"
-    # spec = importlib.util.spec_from_file_location("code_excutor", executor_path)
-    # if spec is None or spec.loader is None:
-    #     raise RuntimeError(f"Failed to load code executor from: {executor_path}")
-    # code_executor_module = importlib.util.module_from_spec(spec)
-    # spec.loader.exec_module(code_executor_module)
-    # ModelResponseCodeExecutor = code_executor_module.ModelResponseCodeExecutor
+    # Load code executor
+    executor_path = Path(__file__).resolve().parents[1] / "code_excutor.py"
+    spec = importlib.util.spec_from_file_location("code_excutor", executor_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Failed to load code executor from: {executor_path}")
+    code_executor_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(code_executor_module)
+    ModelResponseCodeExecutor = code_executor_module.ModelResponseCodeExecutor
 
-    # executor = ModelResponseCodeExecutor(timeout=5, memory_limit_mb=2048)
+    executor = ModelResponseCodeExecutor(timeout=5, memory_limit_mb=2048)
 
-    # # Re-verify with code executor
-    # marked_data = merged_passed.map(mark_sample_passed, num_proc=32)
-    # passed_count = sum(1 for s in marked_data if s["_sample_passed"])
-    # print(f"Re-verified passed samples: {passed_count} / {len(marked_data)}")
+    # Re-verify with code executor
+    marked_data = merged_data.map(mark_sample_passed, num_proc=32)
+    passed_count = sum(1 for s in marked_data if s["_sample_passed"])
+    print(f"Re-verified passed samples: {passed_count} / {len(marked_data)}")
 
     # # Keep only re-verified passing samples
     # final_data = marked_data.filter(lambda x: x["_sample_passed"])
@@ -286,10 +286,10 @@ if __name__ == "__main__":
     # 5. 推送到 Hugging Face，使用 config_name 来区分 Subset
     repo_id = "BigfufuOuO/codegen1_merged_clean"
     
-    print(f"Pushing SFT subset to {repo_id}...")
-    sft_dataset_dict.push_to_hub(repo_id, config_name="sft")
+    # print(f"Pushing SFT subset to {repo_id}...")
+    # sft_dataset_dict.push_to_hub(repo_id, config_name="sft")
     
-    print(f"Pushing RL subset to {repo_id}...")
-    rl_dataset_dict.push_to_hub(repo_id, config_name="rl")
+    # print(f"Pushing RL subset to {repo_id}...")
+    # rl_dataset_dict.push_to_hub(repo_id, config_name="rl")
     
     print("Done! Data successfully pushed as two subsets: 'sft' and 'rl'.")
