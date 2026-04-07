@@ -5,13 +5,15 @@ export NPROC_PER_NODE=2
 # export NCCL_P2P_DISABLE=1
 # export NCCL_SHM_DISABLE=1
 # export NCCL_SOCKET_IFNAME=lo
-# export VLLM_LOGGING_LEVEL=DEBUG
+export VLLM_LOGGING_LEVEL=DEBUG
 # 训练进程内拉起 vLLM 时，fork 容易继承 CUDA/NCCL 上下文导致卡住，使用 spawn 更稳。
 # export VLLM_WORKER_MULTIPROC_METHOD=spawn
-export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+# export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export HF_HOME=/root/shared-nvme/.cache/huggingface
 export HF_DATASETS_CACHE=/root/shared-nvme/.cache/huggingface/datasets
-export MODELSCOPE_CACHE=/root/shared-nvme/.cache/modelscope
+# export MODELSCOPE_CACHE=/root/shared-nvme/.cache/modelscope
+export WANDB_PROJECT=Qwen_thu
+export WABDB_API_KEY=xxx
 
 # 参数解释
 # --external_plugins 使用外部插件进行数据预处理
@@ -53,8 +55,10 @@ swift sft \
     --use_hf \
     --deepspeed "zero2" \
     --gradient_checkpointing true \
+    --report_to wandb \
     # --eval_use_evalscope \
     # --eval_dataset "live_code_bench" \
-    # --eval_dataset_args '{"live_code_bench": {"trust_remote_code": true, "extra_params": {"start_date": "2023-01-01", "end_date": "2025-12-31"}}}' \
-    # --eval_generation_config '{"max_tokens": 4096}' \
-    # --eval_limit 50
+    # --eval_dataset_args '{"live_code_bench": {"trust_remote_code": true}' \
+    # --eval_generation_config '{"max_tokens": 16384}' \
+    # --extra_eval_args '{"infer_backend": "vllm", "vllm_tensor_parallel_size": 2}' \
+    # --eval_limit 100
