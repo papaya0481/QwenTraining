@@ -4,3 +4,7 @@ output/
 eval_output/
 result/
 .vscode/
+
+*.log
+*.wandb
+wandb/

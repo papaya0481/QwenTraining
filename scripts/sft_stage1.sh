@@ -13,7 +13,7 @@ export HF_HOME=/root/shared-nvme/.cache/huggingface
 export HF_DATASETS_CACHE=/root/shared-nvme/.cache/huggingface/datasets
 # export MODELSCOPE_CACHE=/root/shared-nvme/.cache/modelscope
 export WANDB_PROJECT=Qwen_thu
-export WABDB_API_KEY=xxx
+export WABDB_API_KEY=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
 
 # 参数解释
 # --external_plugins 使用外部插件进行数据预处理
