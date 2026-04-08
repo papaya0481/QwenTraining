@@ -5,14 +5,12 @@ export NPROC_PER_NODE=2
 # export NCCL_P2P_DISABLE=1
 # export NCCL_SHM_DISABLE=1
 # export NCCL_SOCKET_IFNAME=lo
-export VLLM_LOGGING_LEVEL=DEBUG
+# export VLLM_LOGGING_LEVEL=DEBUG
 # 训练进程内拉起 vLLM 时，fork 容易继承 CUDA/NCCL 上下文导致卡住，使用 spawn 更稳。
 # export VLLM_WORKER_MULTIPROC_METHOD=spawn
-# export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-export HF_HOME=/root/shared-nvme/.cache/huggingface
-export HF_DATASETS_CACHE=/root/shared-nvme/.cache/huggingface/datasets
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 # export MODELSCOPE_CACHE=/root/shared-nvme/.cache/modelscope
-export WANDB_PROJECT=Qwen_thu
+export WANDB_PROJECT=Qwen_autodl
 export WABDB_API_KEY=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
 
 # 参数解释
@@ -23,34 +21,35 @@ export WABDB_API_KEY=wandb_v1_HYSBkqgNaUcAJ4qPsOM219pIjha_FsqD5x4xI7PxC6V4SMtYcG
 # --freeze-vit 冻结visual层的权重，减少训练时的显存占用和计算量。根据实际情况调整。
 # --extra_eval_args 参考 GRPO 的 vLLM 使用方式，优先限制并发和显存占比，避免训练中评测拉起 vLLM 时 OOM。
 swift sft \
-    --model Qwen/Qwen3.5-0.8B \
+    --model Qwen/Qwen3.5-9B \
     --tuner_type lora \
     --external_plugins scripts/data_preprocess.py \
     --dataset codegen1_train:sft \
-    --val_dataset codegen1_sft_val#20 \
+    --val_dataset codegen1_sft_val \
     --load_from_cache_file true \
     --torch_dtype bfloat16 \
-    --num_train_epochs 2 \
-    --per_device_train_batch_size 1 \
+    --num_train_epochs 3 \
+    --per_device_train_batch_size 2 \
     --per_device_eval_batch_size 1 \
     --learning_rate 1e-4 \
-    --lora_rank 32 \
-    --lora_alpha 64 \
+    --lora_rank 64 \
+    --lora_alpha 128 \
     --target_modules all-linear \
     --freeze_vit true \
     --freeze_llm false \
     --freeze_aligner true \
     --attn_impl flash_attention_2 \
     --gradient_accumulation_steps 16 \
-    --eval_steps 2 \
-    --save_steps 2 \
+    --eval_steps 10 \
+    --save_steps 10 \
+    --early_stop_interval 20 \
     --metric_for_best_model eval_loss \
     --save_total_limit 2 \
-    --logging_steps 5 \
-    --max_length 5000 \
-    --truncation_strategy right \
+    --logging_steps 2 \
+    --max_length 10000 \
+    --truncation_strategy delete \
     --output_dir output \
-    --warmup_ratio 0.05 \
+    --warmup_ratio 0.03 \
     --dataloader_num_workers 4 \
     --use_hf \
     --deepspeed "zero2" \
