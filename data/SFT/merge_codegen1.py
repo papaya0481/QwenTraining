@@ -6,6 +6,38 @@ from datasketch import MinHash, MinHashLSH
 import re
 from transformers import AutoTokenizer
 
+FENCED_BLOCK_PATTERN = re.compile(r"```([^\n`]*)\n([\s\S]*?)```")
+
+
+def normalize_python_fence_after_think(text):
+    """在 </think> 之后，把非 python 标记的代码块统一改为 ```python。"""
+    if not isinstance(text, str) or not text:
+        return text
+
+    think_end = text.find("</think>")
+    if think_end == -1:
+        return text
+
+    split_pos = think_end + len("</think>")
+    prefix = text[:split_pos]
+    suffix = text[split_pos:]
+
+    def _replace_block(match):
+        lang = (match.group(1) or "").strip().lower()
+        code = match.group(2)
+        if lang.startswith("python"):
+            return match.group(0)
+        return f"```python\n{code}```"
+
+    return prefix + FENCED_BLOCK_PATTERN.sub(_replace_block, suffix)
+
+
+def normalize_assistant_python_fence(sample):
+    assistant = sample.get("assistant")
+    if isinstance(assistant, str):
+        sample["assistant"] = normalize_python_fence_after_think(assistant)
+    return sample
+
 
 def parse_test_cases(raw_test_cases):
     if raw_test_cases is None:
@@ -116,7 +148,7 @@ def deduplicate_with_lsh(dataset, column_name='user', threshold=0.8, num_perm=12
 
 
 if __name__ == "__main__":
-    data_openthought = load_from_disk("/data2/ruixin/qwen/cleaned_openthoughts")
+    data_openthought = load_dataset("BigfufuOuO/code_gen", split="train")
     data_codeforce = load_dataset("ZyWOuO/clean-codeforces", split="train")
 
     # 1. 记录原始数据量
@@ -180,6 +212,10 @@ if __name__ == "__main__":
     unique_indices = deduplicate_with_lsh(merged_data, column_name='user', threshold=0.8, num_perm=128)
     merged_data = merged_data.select(unique_indices)
     print(f"After deduplication: {len(merged_data)} samples")
+
+    # 规范化 assistant：仅处理 </think> 之后的代码块，把 ``` 统一为 ```python。
+    merged_data = merged_data.map(normalize_assistant_python_fence, num_proc=16)
+    print("Normalized assistant code fences after </think> to use python language tag.")
     
     # 去除user, assistant, sytem中最外层的引号
     def remove_outer_quotes(sample):
@@ -285,12 +321,12 @@ if __name__ == "__main__":
     print(f"SFT eligible samples (assistant<=8192, total<=10000): {len(sft_select_data)}")
 
     # 4. 从 sft_select_data 中选 5500 条作为 SFT
-    sft_size = min(5200, len(sft_select_data))
-    sft_data = sft_select_data.select(range(sft_size))
+    # sft_size = min(5200, len(sft_select_data))
+    sft_data = sft_select_data
     print(f"SFT data size: {len(sft_data)}")
 
     # 5. 为 SFT 数据划分 train 和 test (10% 作为 test)
-    sft_dataset_dict = sft_data.train_test_split(test_size=0.08, seed=42)
+    sft_dataset_dict = sft_data.train_test_split(test_size=0.06, seed=42)
 
     # 6. 从 passed_data 中去掉 SFT 已用的样本，再按 assistant<=10000 过滤得到 rl_select_data
     sft_idx_set = set(sft_data["_idx"])
@@ -325,7 +361,7 @@ if __name__ == "__main__":
     print(f"Pushing SFT subset to {repo_id}...")
     sft_dataset_dict.push_to_hub(repo_id, config_name="sft")
 
-    print(f"Pushing RL subset to {repo_id}...")
-    rl_dataset_dict.push_to_hub(repo_id, config_name="rl")
+    # print(f"Pushing RL subset to {repo_id}...")
+    # rl_dataset_dict.push_to_hub(repo_id, config_name="rl")
 
     print("Done! Data successfully pushed as two subsets: 'sft' and 'rl'.")

@@ -1,11 +1,29 @@
-from datasets import load_dataset
+from datasets import load_dataset, load_from_disk
 import importlib.util
 import json
+import re
 from pathlib import Path
 
 SYSTEM_PROMPT = "You will be given a question (problem specification) and will generate a correct Python program that matches the specification and passes all tests. "
-PREFIX_USER_PROMPT = """
-Generate an executable Python function generated from the given prompt. The function should take stdin as input and print the output."""
+PREFIX_USER_PROMPT = """You will be given a competitive programming problem. Generate an executable Python function generated from the given prompt. The function should take stdin as input and print the output.
+
+Put your final solution within a single code block: 
+```python 
+<your code here> 
+```\n
+### Question:\n"""
+
+
+def extract_fenced_code_blocks(text):
+    """提取并保留所有 ```...``` 代码块，丢弃其余文本。"""
+    if not text:
+        return ""
+    blocks = re.findall(r"```[\s\S]*?```", text)
+    return "\n\n".join(blocks).strip()
+
+
+def has_fenced_code_blocks(text):
+    return bool(extract_fenced_code_blocks(text))
 
 def parse_test_cases(raw_test_cases):
     if raw_test_cases is None:
@@ -116,7 +134,17 @@ if __name__ == "__main__":
     executor = ModelResponseCodeExecutor(timeout=10, memory_limit_mb=2048)
 
     trimmed_code_domain_data = code_domain_data.map(trim_test_cases)
-    marked_code_domain_data = trimmed_code_domain_data.map(mark_sample_passed, num_proc=32)
+    marked_cache_path = Path("/data2/ruixin/qwen/cleaned_openthoughts_marked_cache")
+
+    # 验证结果优先使用磁盘缓存，避免重复执行代码验证。
+    if marked_cache_path.exists():
+        print(f"Loading verification cache from: {marked_cache_path}")
+        marked_code_domain_data = load_from_disk(str(marked_cache_path))
+    else:
+        marked_code_domain_data = trimmed_code_domain_data.map(mark_sample_passed, num_proc=16)
+        marked_code_domain_data.save_to_disk(str(marked_cache_path))
+        print(f"Saved verification cache to: {marked_cache_path}")
+
     passed_count = sum(1 for s in marked_code_domain_data if s["_sample_passed"])
     print(f"Passed samples: {passed_count} / {len(marked_code_domain_data)}")
 
@@ -126,11 +154,12 @@ if __name__ == "__main__":
             wrapped_reasoning = f"<think>\n{sample['deepseek_reasoning']}\n</think>\n"
         else:
             wrapped_reasoning = sample["deepseek_reasoning"]
+        code_only_solution = extract_fenced_code_blocks(sample["deepseek_solution"])
         passed = sample["_sample_passed"]
         return {
             "system": SYSTEM_PROMPT,
             "user": PREFIX_USER_PROMPT + "\n" + sample["problem"],
-            "assistant": wrapped_reasoning + "\n" + sample["deepseek_solution"],
+            "assistant": wrapped_reasoning + "\n" + code_only_solution,
             "test_cases": sample["test_cases"],
             "source_dataset": "OpenThoughts-114k",
             "task": "code_generation",
@@ -138,8 +167,14 @@ if __name__ == "__main__":
             "errors": "" if passed else sample["_error"],
         }
 
-    # 保存最终的训练数据（包含所有样本，pass列标记是否通过）
-    final_data = marked_code_domain_data.map(format_sample, num_proc=16)
+    # 丢弃在 </think> 之后找不到代码块的样本。
+    filtered_code_domain_data = marked_code_domain_data.filter(
+        lambda x: has_fenced_code_blocks(x.get("deepseek_solution", "")),
+        num_proc=16,
+    )
+
+    # 保存最终的训练数据（包含所有保留样本，pass列标记是否通过）
+    final_data = filtered_code_domain_data.map(format_sample, num_proc=16)
     final_data = final_data.remove_columns(["_sample_passed", "_error"])
     final_data = final_data.remove_columns(["problem", "deepseek_reasoning", "deepseek_solution", "ground_truth_solution", "domain", "source", "starter_code"])
     # final_data.save_to_disk("/data2/ruixin/cleaned_openthoughts")
