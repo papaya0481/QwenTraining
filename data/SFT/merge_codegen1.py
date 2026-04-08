@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from datasketch import MinHash, MinHashLSH
 import re
+from transformers import AutoTokenizer
 
 
 def parse_test_cases(raw_test_cases):
@@ -198,9 +199,9 @@ if __name__ == "__main__":
                     return True
         return False
 
-    merged_data = merged_data.filter(lambda x: not has_outer_quotes(x))
-    # 过滤掉最外层有引号的样本，避免它们干扰后续的代码执行验证。
-    print(f"After filtering outer quotes: {len(merged_data)} samples")
+    # merged_data = merged_data.filter(lambda x: not has_outer_quotes(x))
+    # # 过滤掉最外层有引号的样本，避免它们干扰后续的代码执行验证。
+    # print(f"After filtering outer quotes: {len(merged_data)} samples")
 
     # Filter to samples that already passed
     # merged_passed = merged_data.filter(lambda x: x["pass"] == True)
@@ -222,9 +223,9 @@ if __name__ == "__main__":
     executor = ModelResponseCodeExecutor(timeout=5, memory_limit_mb=2048)
 
     # Re-verify with code executor
-    marked_data = merged_data.map(mark_sample_passed, num_proc=32)
-    passed_count = sum(1 for s in marked_data if s["_sample_passed"])
-    print(f"Re-verified passed samples: {passed_count} / {len(marked_data)}")
+    # marked_data = merged_data.map(mark_sample_passed, num_proc=32)
+    # passed_count = sum(1 for s in marked_data if s["_sample_passed"])
+    # print(f"Re-verified passed samples: {passed_count} / {len(marked_data)}")
 
     # # Keep only re-verified passing samples
     # final_data = marked_data.filter(lambda x: x["_sample_passed"])
@@ -237,59 +238,94 @@ if __name__ == "__main__":
     
     # 把pass列=True的样本单独保存到一个新的数据集中，供后续分析和对比使用。
     passed_data = merged_data.filter(lambda x: x["pass"] == True)
-    # passed_data.push_to_hub("BigfufuOuO/codegen1_merged_clean")
-    # 分割为sft，rl两部分，分为两个subset。全部都为pass=True的样本，sft总共5000，rl为剩下的。
     # 1. 强烈建议先打乱数据，保证切分出的样本分布均匀
     passed_data = passed_data.shuffle(seed=42)
-    
+
     total_len = len(passed_data)
     print(f"Total passed samples: {total_len}")
 
-    # 2. 划分为 SFT (前 5000 条) 和 RL (剩余的样本)
-    sft_size = min(5500, total_len) # 防止总数据量不足 5000 报错
-    sft_data = passed_data.filter(lambda x: len(x["assistant"]) <= 62000)
-    sft_data = sft_data.select(range(sft_size))
-    # sft data添加: 过滤 assistant > 62000 字符的样本，避免它们干扰 SFT 训练。
-    
-    rl_data = passed_data.select(range(sft_size, total_len))
-    unused_count = len(rl_data)
-    
-    # 3. 为 SFT 数据划分 train 和 test (这里默认划出 10% 作为 test，即 500 条)
-    # train_test_split 会自动返回一个包含 "train" 和 "test" 的 DatasetDict
-    sft_dataset_dict = sft_data.train_test_split(test_size=0.1, seed=42)
-    
-    # 5. 构建 10000 条的 RL 数据集
-    rl_target_size = 10000
-    failed_data = passed_data.filter(lambda x: x["pass"] == False)
-    failed_data_count = 0
+    # 2. 使用 tokenizer 计算 token 数量
+    tokenizer = AutoTokenizer.from_pretrained("Qwen/Qwen3.5-0.8B", trust_remote_code=True)
 
-    if unused_count < rl_target_size:
-        # 如果剩下没用过的数据不够，计算需要从 SFT 借多少条
-        rl_shortage = rl_target_size - unused_count
-        print(f"RL 数据不足 {rl_target_size} 条，需要从 SFT 中借用 {rl_shortage} 条重合数据。")
-        
-        # 从 SFT 数据中抽取不足的部分
-        overlap_data_for_rl = sft_data.select(range(rl_shortage))
-        
-        # 拼接：未使用的 Pass 数据 + SFT 重合数据
-        rl_data = concatenate_datasets([rl_data, overlap_data_for_rl])
-        # 添加一部分failed数据来补充到12000条
-        failed_to_add = failed_data.select(range(max(failed_data_count, rl_target_size - len(rl_data))))
-        rl_data = concatenate_datasets([rl_data, failed_to_add])
-        print(f"最终 RL 数据集大小：{len(rl_data)} 条（包含 {len(overlap_data_for_rl)} 条 SFT 重合数据和 {len(failed_to_add)} 条 failed 数据）")
-    
-    # 4. 为 RL 数据构造 DatasetDict (通常 RL 只需要 train split)
+    def compute_token_lengths(batch):
+        def tok_len(texts):
+            encoded = tokenizer(texts, add_special_tokens=False, truncation=False)
+            return [len(ids) for ids in encoded["input_ids"]]
+
+        assistant_lens = tok_len([s or "" for s in batch["assistant"]])
+        user_lens = tok_len([s or "" for s in batch["user"]])
+        system_lens = tok_len([s or "" for s in batch["system"]])
+
+        total_lens = [a + u + s for a, u, s in zip(assistant_lens, user_lens, system_lens)]
+        return {
+            "_assistant_tokens": assistant_lens,
+            "_total_tokens": total_lens,
+        }
+
+    print("Computing token lengths...")
+    passed_data = passed_data.map(
+        compute_token_lengths,
+        batched=True,
+        batch_size=512,
+        num_proc=1,
+        load_from_cache_file=False,
+    )
+    # 记录全局索引，用于后续从 passed_data 中排除 SFT 样本
+    passed_data = passed_data.map(
+        lambda _, idx: {"_idx": idx},
+        with_indices=True,
+        load_from_cache_file=False,
+    )
+
+    # 3. 按 token 数量过滤，得到 sft_select_data
+    sft_select_data = passed_data.filter(
+        lambda x: x["_assistant_tokens"] <= 8192 and x["_total_tokens"] <= 10000,
+        load_from_cache_file=False,
+    )
+    print(f"SFT eligible samples (assistant<=8192, total<=10000): {len(sft_select_data)}")
+
+    # 4. 从 sft_select_data 中选 5500 条作为 SFT
+    sft_size = min(5200, len(sft_select_data))
+    sft_data = sft_select_data.select(range(sft_size))
+    print(f"SFT data size: {len(sft_data)}")
+
+    # 5. 为 SFT 数据划分 train 和 test (10% 作为 test)
+    sft_dataset_dict = sft_data.train_test_split(test_size=0.08, seed=42)
+
+    # 6. 从 passed_data 中去掉 SFT 已用的样本，再按 assistant<=10000 过滤得到 rl_select_data
+    sft_idx_set = set(sft_data["_idx"])
+    rl_select_data = passed_data.filter(
+        lambda x: x["_idx"] not in sft_idx_set and x["_assistant_tokens"] <= 20000,
+        load_from_cache_file=False,
+    )
+    print(f"RL eligible samples (excluding SFT, assistant<=20000): {len(rl_select_data)}")
+
+    # 7. 从 rl_select_data 中选 10000 条；不足时从 sft_data 中补充
+    rl_target_size = 10000
+    rl_available = len(rl_select_data)
+
+    if rl_available >= rl_target_size:
+        rl_data = rl_select_data.select(range(rl_target_size))
+    else:
+        rl_shortage = rl_target_size - rl_available
+        print(f"RL 数据不足 {rl_target_size} 条（仅 {rl_available} 条），从 SFT 中借用 {rl_shortage} 条。")
+        borrow_size = min(rl_shortage, len(sft_data))
+        overlap_data_for_rl = sft_data.select(range(borrow_size))
+        rl_data = concatenate_datasets([rl_select_data, overlap_data_for_rl])
+        print(f"最终 RL 数据集大小：{len(rl_data)} 条（含 {borrow_size} 条来自 SFT 的重合数据）")
+
+    # 7. 为 RL 数据构造 DatasetDict
     rl_dataset_dict = DatasetDict({
         "train": rl_data
     })
-    
-    # 5. 推送到 Hugging Face，使用 config_name 来区分 Subset
+
+    # 8. 推送到 Hugging Face，使用 config_name 来区分 Subset
     repo_id = "BigfufuOuO/codegen1_merged_clean"
-    
-    # print(f"Pushing SFT subset to {repo_id}...")
-    # sft_dataset_dict.push_to_hub(repo_id, config_name="sft")
-    
-    # print(f"Pushing RL subset to {repo_id}...")
-    # rl_dataset_dict.push_to_hub(repo_id, config_name="rl")
-    
+
+    print(f"Pushing SFT subset to {repo_id}...")
+    sft_dataset_dict.push_to_hub(repo_id, config_name="sft")
+
+    print(f"Pushing RL subset to {repo_id}...")
+    rl_dataset_dict.push_to_hub(repo_id, config_name="rl")
+
     print("Done! Data successfully pushed as two subsets: 'sft' and 'rl'.")
