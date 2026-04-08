@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 SYSTEM_PROMPT = "You will be given a question (problem specification) and will generate a correct Python program that matches the specification and passes all tests. "
-PREFIX_USER_PROMPT = """You will be given a competitive programming problem. Generate an executable Python function generated from the given prompt. The function should take stdin as input and print the output.
+PREFIX_USER_PROMPT = """You will be given a competitive programming problem. Generate an executable Python function generated from the given prompt. Please reason step by step about your solution approach, then provide a complete implementation in Python 3 that is thoroughly optimized for both speed and memory usage.
 
 Put your final solution within a single code block: 
 ```python 
