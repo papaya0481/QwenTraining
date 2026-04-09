@@ -50,6 +50,7 @@ MAX_TEST_CASES = 10
 VERIFY_TIMEOUT = 8
 VERIFY_NUM_PROC = 16
 VERIFY_CACHE_PATH = Path("/data2/ruixin/qwen/taco_v1_marked_cache")
+VERIFY_CACHE_VERSION = "v2_call_based_unwrap_expected"
 FINAL_SAVE_PATH = Path("/data2/ruixin/qwen/cleaned_taco_v1")
 
 
@@ -268,6 +269,7 @@ def mark_sample_passed(sample):
                 "_error": "",
                 "_selected_solution": solution,
                 "_selected_solution_idx": idx,
+                "_verify_version": VERIFY_CACHE_VERSION,
             }
         all_errors.append(
             {
@@ -282,6 +284,7 @@ def mark_sample_passed(sample):
         "_error": json.dumps(all_errors, ensure_ascii=False),
         "_selected_solution": fallback_solution,
         "_selected_solution_idx": -1,
+        "_verify_version": VERIFY_CACHE_VERSION,
     }
 
 
@@ -349,8 +352,20 @@ if __name__ == "__main__":
     if VERIFY_CACHE_PATH.exists():
         print(f"Loading verification cache from: {VERIFY_CACHE_PATH}")
         marked_data = load_from_disk(str(VERIFY_CACHE_PATH))
-        required_columns = {"_sample_passed", "_selected_solution", "_selected_solution_idx", "_error"}
-        cache_ok = required_columns.issubset(set(marked_data.column_names)) and len(marked_data) == len(data)
+        required_columns = {
+            "_sample_passed",
+            "_selected_solution",
+            "_selected_solution_idx",
+            "_error",
+            "_verify_version",
+        }
+        has_required_columns = required_columns.issubset(set(marked_data.column_names))
+        same_length = len(marked_data) == len(data)
+        cache_version_ok = True
+        if len(marked_data) > 0:
+            cache_version_ok = marked_data[0].get("_verify_version", "") == VERIFY_CACHE_VERSION
+
+        cache_ok = has_required_columns and same_length and cache_version_ok
         if not cache_ok:
             print("Verification cache is stale for all-solutions mode, rebuilding cache...")
             marked_data = data.map(mark_sample_passed, num_proc=VERIFY_NUM_PROC)
@@ -369,8 +384,17 @@ if __name__ == "__main__":
         format_sample,
         remove_columns=marked_data.column_names,
     )
+    passed_data = passed_data.map(
+        format_sample,
+        remove_columns=passed_data.column_names,
+    )
     final_data.save_to_disk(str(FINAL_SAVE_PATH))
     print("Final cleaned data saved to:", FINAL_SAVE_PATH)
     print("Total samples:", len(final_data))
     print(final_data[0])
-    final_data.push_to_hub("BigfufuOuO/taco_verified")
+
+    repo_id = "BigfufuOuO/taco_verified"
+    print(f"Pushing final_data to {repo_id} subset='train'...")
+    final_data.push_to_hub(repo_id, config_name="train")
+    print(f"Pushing passed_data to {repo_id} subset='passed'...")
+    passed_data.push_to_hub(repo_id, config_name="passed")
