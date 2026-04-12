@@ -66,7 +66,8 @@ if __name__ == "__main__":
     # split_ds = raw_data["train"].train_test_split(test_size=0.05, seed=42)
     train_dataset = raw_data["train"]
 
-    train_dataset = train_dataset.map(function=make_map_fn("train"), with_indices=True)
+    original_columns = train_dataset.column_names
+    train_dataset = train_dataset.map(function=make_map_fn("train"), with_indices=True, remove_columns=original_columns)
     # test_dataset  = test_dataset.map(function=make_map_fn("test"),  with_indices=True)
 
     # Show 1 example after preprocessing
