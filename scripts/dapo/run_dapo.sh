@@ -2,9 +2,9 @@ set -euo pipefail
 NGPUS=1
 TP=1
 
-export CUDA_VISIBLE_DEVICES=2
 export HYDRA_FULL_ERROR=1
 export CUDA_MPS_ACTIVE_THREAD_PERCENTAGE=100
+export LD_LIBRARY_PATH=/data/wuli_error/miniconda3/envs/llmqw/lib
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 # verl_root=${script_dir}/verl

@@ -57,6 +57,14 @@ uv pip install vllm deepspeed --torch-backend=auto
 在 `docs/acl_latex.tex` 中有 VeRPO 论文的 LaTeX 文件，供AI生成codes时参考。
 ### 安装flash attention
 使用 [github proxy](https://gh-proxy.com)，去到[flash attention的release页面](https://github.com/Dao-AILab/flash-attention/releases)，下载对应pytorch, python, cuda版本的whl文件，安装。额外的编译好的安装文件[[1]](https://github.com/alkemiik-coder/FlashAttention-2.8.3-Custom-Linux-Wheels)[[2]](https://github.com/lesj0610/flash-attention/releases)
+### 安装pyext
+```
+uv pip install git+https://github.com/ShaohonChen/PyExt.git@py311support
+```
+### 开启ray
+```
+ray start --head --dashboard-port=8900
+```
 
 ## 其他
 1. 关于多卡运行的问题[issue](https://github.com/modelscope/ms-swift/issues/3991)

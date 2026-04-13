@@ -20,6 +20,8 @@ data:
   train_batch_size: 4
   shuffle: true
   seed: 42
+  apply_chat_template_kwargs:
+    enable_thinking: true # 设置开启think
 
 algorithm:
   adv_estimator: grpo
@@ -31,11 +33,15 @@ algorithm:
     max_num_gen_batches: 10
     metric: acc  # 参考 https://verl.readthedocs.io/en/latest/algo/dapo.html
 
+# lora_adapter_path: 加载lora 权重
 actor_rollout_ref:
   model:
     path: Qwen/Qwen3.5-0.8B
+    lora_adapter_path: /data/wuli_error/WRX/QwenTraining/output/v52-20260404-111420/checkpoint-1
     use_remove_padding: true
     enable_gradient_checkpointing: true
+    override_config:
+      dtype: bfloat16 
 
   actor:
     use_kl_loss: false
@@ -44,7 +50,7 @@ actor_rollout_ref:
     clip_ratio_high: 0.28
     clip_ratio_c: 10.0
     use_dynamic_bsz: true
-    ppo_max_token_len_per_gpu: 16384
+    ppo_max_token_len_per_gpu: 12288
     ppo_mini_batch_size: 32
     entropy_coeff: 0
     grad_clip: 1.0
@@ -58,6 +64,7 @@ actor_rollout_ref:
       param_offload: true
       optimizer_offload: true
       fsdp_size: -1
+      model_dtype: bfloat16
 
   # 当use_kl_loss为false以及 use_kl_in_reward=false时，不开启
   ref:
@@ -68,14 +75,18 @@ actor_rollout_ref:
       param_offload: true
 
   rollout:
+    trace: # 添加查看val data的回答
+      backend: weave
     name: vllm
     n: 16
+    dtype: bfloat16
     log_prob_use_dynamic_bsz: true
-    log_prob_max_token_len_per_gpu: 16384
-    gpu_memory_utilization: 0.80
+    log_prob_max_token_len_per_gpu: 12288
+    gpu_memory_utilization: 0.3
     tensor_model_parallel_size: 1
     enable_chunked_prefill: true
-    max_num_batched_tokens: 16384
+    max_num_batched_tokens: 12288
+    max_model_len: 12288
     temperature: 1.0
     top_p: 1.0
     top_k: -1
@@ -88,13 +99,17 @@ actor_rollout_ref:
 
 reward_model:
   reward_manager: dapo
-  overlong_buffer:
-    enable: true
-    len: 4096
-    penalty_factor: 1.0
+  reward_kwargs:
+    max_resp_len: 12288  # 必须加这个，对应你 data.max_response_length
+    overlong_buffer_cfg: # 注意这里可能需要带上 _cfg 后缀，视 verl 版本而定
+      enable: true
+      len: 4096
+      penalty_factor: 1.0
+      log: true
 
 trainer:
-  logger: [console, wandb]
+  # logger: [console, wandb]
+  loggerr: [console]
   project_name: DAPO
   experiment_name: DAPO-Qwen3.5-0.8B
   n_gpus_per_node: 1

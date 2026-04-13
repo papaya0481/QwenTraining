@@ -38,7 +38,10 @@ def make_map_fn(split):
             "data_source": "taco",
             "prompt": prompt,
             "ability": "code",
-            "ground_truth": example["answer"],
+            "reward_model": {
+                "style": "rule",
+                "ground_truth": example["answer"]
+            },
             "extra_info": {
                 "index":      idx,
                 "fn_mode":    example["fn_mode"],
