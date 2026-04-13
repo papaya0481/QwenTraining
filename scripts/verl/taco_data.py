@@ -20,10 +20,14 @@ def make_map_fn(split):
         # truncated to 4 hex digits, prefixed with the sample index and test-case index.
         # Format: "{example_idx}_{test_case_idx}_{hash:4}"
         raw_tc = example["test_cases"] or ""
+        normalized_tc = raw_tc
         try:
             tc_payload = json.loads(raw_tc)
             inputs  = tc_payload.get("input",  tc_payload.get("inputs",  []))
             outputs = tc_payload.get("output", tc_payload.get("outputs", []))
+            # Normalize to {"inputs": [...], "outputs": [...]}
+            normalized_payload = {"inputs": inputs, "outputs": outputs}
+            normalized_tc = json.dumps(normalized_payload, ensure_ascii=False)
             n = max(len(inputs), len(outputs))
             test_hash = [
                 f"{idx}_{tc_i}_{hashlib.sha256(json.dumps([inputs[tc_i] if tc_i < len(inputs) else None, outputs[tc_i] if tc_i < len(outputs) else None], ensure_ascii=False).encode()).hexdigest()[:4]}"
@@ -40,7 +44,7 @@ def make_map_fn(split):
             "ability": "code",
             "reward_model": {
                 "style": "rule",
-                "ground_truth": example["test_cases"]
+                "ground_truth": normalized_tc
             },
             "extra_info": {
                 "index":      idx,
