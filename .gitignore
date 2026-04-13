@@ -8,3 +8,6 @@ result/
 *.log
 *.wandb
 wandb/
+
+rl_data/
+flash-attention/
