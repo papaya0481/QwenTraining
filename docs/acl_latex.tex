@@ -1,0 +1,428 @@
+\documentclass[11pt]{article}
+
+% Change "review" to "final" to generate the final (sometimes called camera-ready) version.
+% Change to "preprint" to generate a non-anonymous version with page numbers.
+\usepackage[preprint]{acl}
+\usepackage{multirow}
+% Standard package includes
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage{textcomp}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{tcolorbox}
+\usepackage{svg}
+\usepackage[normalem]{ulem}
+\useunder{\uline}{\ul}{}
+\usepackage{enumitem}
+% For proper rendering and hyphenation of words containing Latin characters (including in bib files)
+\usepackage[T1]{fontenc}
+% For Vietnamese characters
+% \usepackage[T5]{fontenc}
+% See https://www.latex-project.org/help/documentation/encguide.pdf for other character sets
+
+% This assumes your files are encoded as UTF8
+\usepackage[utf8]{inputenc}
+
+% This is not strictly necessary, and may be commented out,
+% but it will improve the layout of the manuscript,
+% and will typically save some space.
+\usepackage{microtype}
+
+% This is also not strictly necessary, and may be commented out.
+% However, it will improve the aesthetics of text in
+% the typewriter font.
+\usepackage{inconsolata}
+\usepackage{array}
+%Including images in your LaTeX document requires adding
+%additional package(s)
+\usepackage{graphicx}
+\usepackage{booktabs}
+% If the title and author information does not fit in the area allocated, uncomment the following
+%
+%\setlength\titlebox{<dim>}
+%
+% and set <dim> to something 5cm or larger.
+\newcommand*\samethanks[1][\value{footnote}]{\footnotemark[#1]}
+
+\title{VeRPO: Verifiable Dense Reward Policy Optimization for Code Generation}
+%\title{Beyond Binary Rewards: VeRPO Generates Dense Intrinsic Signals from Code Execution Feedback}
+
+% Author information can be set in various styles:
+% For several authors from the same institution:
+% \author{Author 1 \and ... \and Author n \\
+%         Address line \\ ... \\ Address line}
+% if the names do not fit well on one line use
+%         Author 1 \\ {\bf Author 2} \\ ... \\ {\bf Author n} \\
+% For authors from different institutions:
+% \author{Author 1 \\ Address line \\  ... \\ Address line
+%         \And  ... \And
+%         Author n \\ Address line \\ ... \\ Address line}
+% To start a separate ``row'' of authors use \AND, as in
+% \author{Author 1 \\ Address line \\  ... \\ Address line
+%         \AND
+%         Author 2 \\ Address line \\ ... \\ Address line \And
+%         Author 3 \\ Address line \\ ... \\ Address line}
+
+% \author{First Author \\
+%   Affiliation / Address line 1 \\
+%   Affiliation / Address line 2 \\
+%   Affiliation / Address line 3 \\
+%   \texttt{email@domain} \\\And
+%   Second Author \\
+%   Affiliation / Address line 1 \\
+%   Affiliation / Address line 2 \\
+%   Affiliation / Address line 3 \\
+%   \texttt{email@domain} \\}
+
+\author{
+ \textbf{Longwen Wang\textsuperscript{1,2}}\thanks{Work done during internship at TeleAI.},
+ \textbf{Xuan'er Wu\textsuperscript{1}},
+ \textbf{Xiaohui Hu\textsuperscript{1}},
+ \textbf{Yirui Liu\textsuperscript{1}},
+ \textbf{Yuankai Fan\textsuperscript{1}},
+ \\
+ \textbf{Kaidong Yu\textsuperscript{1}},
+ \textbf{Qizhen Weng\textsuperscript{1}},
+ \textbf{Wei Xi\textsuperscript{2}}\thanks{Corresponding authors},
+ \textbf{Xuelong Li\textsuperscript{1}}\samethanks
+%  \textbf{Tenth Author\textsuperscript{1}},
+%  \textbf{Eleventh E. Author\textsuperscript{1,2,3,4,5}},
+%  \textbf{Twelfth Author\textsuperscript{1}},
+% \\
+%  \textbf{Thirteenth Author\textsuperscript{3}},
+%  \textbf{Fourteenth F. Author\textsuperscript{2,4}},
+%  \textbf{Fifteenth Author\textsuperscript{1}},
+%  \textbf{Sixteenth Author\textsuperscript{1}},
+% \\
+%  \textbf{Seventeenth S. Author\textsuperscript{4,5}},
+%  \textbf{Eighteenth Author\textsuperscript{3,4}},
+%  \textbf{Nineteenth N. Author\textsuperscript{2,5}},
+%  \textbf{Twentieth Author\textsuperscript{1}}
+\\
+\\
+ \textsuperscript{1}Institute of Artificial Intelligence, China Telecom (TeleAI)
+ \\
+ \textsuperscript{2}National Key Laboratory of Human-Machine Hybrid Augmented Intelligence, Xi'an Jiaotong University
+%  \textsuperscript{3}Affiliation 3,
+%  \textsuperscript{4}Affiliation 4,
+%  \textsuperscript{5}Affiliation 5
+\\
+ {
+  \tt\small longwenwang12@gmail.com, xiwei@xjtu.edu.cn, xuelong\_li@ieee.org
+ }
+}
+
+\begin{document}
+\maketitle
+\begin{abstract}
+Effective reward design is a central challenge in Reinforcement Learning (RL) for code generation. Mainstream pass/fail outcome rewards enforce functional correctness via executing unit tests, but the resulting sparsity limits potential performance gains. While recent work has explored external Reward Models (RM) to generate richer, continuous rewards, the learned RMs suffer from reward misalignment and prohibitive computational cost. In this paper, we introduce \textbf{VeRPO} (\textbf{V}erifiable D\textbf{e}nse \textbf{R}eward \textbf{P}olicy \textbf{O}ptimization), a novel RL framework for code generation that synthesizes \textit{robust and dense rewards fully grounded in verifiable execution feedback}.
+The core idea of VeRPO is constructing dense rewards from weighted partial success: by dynamically estimating the difficulty weight of each unit test based on the execution statistics during training, a dense reward is derived from the sum of weights of the passed unit tests. To solidify the consistency between partial success and end-to-end functional correctness, VeRPO further integrates the dense signal with global execution outcomes, establishing a robust and dense reward paradigm relying solely on verifiable execution feedback.
+Extensive experiments across diverse benchmarks and settings demonstrate that VeRPO consistently outperforms outcome-driven and RM-based baselines, achieving up to +8.83\% gain in pass@1 with negligible time cost (< 0.02\%) and zero GPU memory overhead. 
+\end{abstract}
+
+\section{Introduction}
+
+Code generation has emerged as a cornerstone capability of Large Language Models (LLMs), empowering LLMs to address computational challenges ranging from single-turn solution synthesis \cite{roziere2023code-single-turn-code,wang2021codet5-single-turn} to iterative multi-turn refinement \cite{dong2025survey-multi-turn-code,zheng2024opencodeinterpreter-multi-turn-code}. Within this domain, Reinforcement Learning (RL) has significantly scaled performance, with its optimization effectiveness hinging on the design of reward signals \cite{mroueh2025reinforcement-rlvrwithcode, chen2025R1-Code-Interpreter, lambert2024tulu-RLVR}. Existing reward designs in RL for code generation predominantly fall into two distinct paradigms, each facing specific limitations.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{introv3.pdf}
+  \caption{Comparison of reward design in RL for code generation.
+  }\vspace{-3pt}
+  \label{fig:Intro_1}
+\end{figure}
+
+First, mainstream approaches adopt a pass/fail outcome-driven reward obtained by executing code against unit tests \cite{chen2025R1-Code-Interpreter,gehring2024rlef}. As illustrated in Figure \ref{fig:Intro_1} (a), the global execution outcome on the test suite provides a verifiable, binary reward signal (e.g., 1 if all unit tests pass and 0 otherwise), which effectively aligns LLMs with functional correctness\footnote{Functional correctness refers to the property that generated code produces the expected output for all valid inputs.} requirement of code tasks. 
+However, strict binary verification induces severe \textit{sparsity}: when all sampled trajectories for a given prompt yield identical execution outcomes, the resulting uniform rewards eliminate the relative advantage required by group-based RL methods, such as Group Relative Policy Optimization (GRPO; \citealp{guo2025deepseek}), thus vanishing gradients and stalling policy optimization.
+
+Alternatively, recent work has explored leveraging external Reward Models (RMs) to offer dense supervision \cite{zeng-etal-2025-acecoder,ye2025processreward2,dai2024processreward}. As depicted in Figure \ref{fig:Intro_1} (b), by analyzing code semantics and reasoning processes, RMs offer fine-grained, continuous signals to guide precise optimization. Despite the potential of dense supervision, learned RMs are prone to reward hacking,  often steering the policy towards misaligned solutions and destabilizing training \cite{zhang2025reward-hacking}. Compounded by the substantial memory demand and inference complexity of external models, the practical applicability of RM-based methods remains limited.
+
+The dual-bottleneck scenario described above reveals a fundamental gap: outcome-driven rewards enforce functional correctness but lack nuance, whereas RM-based rewards offer dense supervision but suffer from misalignment and prohibitive computational cost. This poses an open question: \textit{How can we synthesize dense reward signals while maintaining rigorous functional correctness and circumventing the burden of auxiliary models?}
+
+To answer this, as presented in Figure \ref{fig:Intro_1} (c), we propose VeRPO, a novel RL framework for code generation that synthesizes robust and dense rewards fully grounded in verifiable execution feedback. Recall that each generated code snippet is verified against a complete suite of unit tests, resulting in various combinations of partial success (i.e., passing a subset of unit tests). Our key observations are twofold: (1) Partial success is more informative than complete failure, deserving a non-zero reward that reflects intermediate progress. (2) Simply quantifying partial success as the proportion of passed tests ignores the difficulty among test cases, risking reward hacking where the policy overfits to easy tests. Therefore, the core idea of VeRPO is to define a dense reward based on \textit{weighted partial success}: each unit test is assigned a difficulty weight, and a reward signal is derived from summing the weights of the passed unit tests, yielding an informative reward spectrum spanning from total failure to complete success without external reward models. 
+
+In implementing this idea, VeRPO introduces an intrinsic dynamic weighting mechanism that estimates test weights based on the online execution statistics of the current policy, discriminating between challenging tests the policy struggles with and trivial ones it has already mastered. The aggregated weights of passed unit tests construct a dense reward that guides informative policy optimization. To solidify alignment between weighted partial success and end-to-end functional correctness, VeRPO anchors the dense signal with the global execution outcome. As such, a robust and dense reward signal is derived fully grounded in verifiable execution, without external models or additional rollouts.
+
+In diverse code generation benchmarks and settings, extensive experiments demonstrate that VeRPO consistently outperforms outcome-driven and RM-based baselines, achieving up to 8.83\% performance gain in pass@1 with negligible time cost (< 0.02\%) and zero GPU memory overhead.
+
+Our key contributions are as follows:
+\begin{itemize}
+\item We propose VeRPO, a novel RL framework that addresses the inherent limitations of the two prevailing reward paradigms in code generation, yielding robust and dense rewards solely from verifiable execution feedback.
+\item We introduce an intrinsic dynamic weighting mechanism that extracts fine-grained signals from weighted partial success, with global execution outcome anchors to solidify alignment with end-to-end functional correctness.
+\item Extensive experiments on various code generation benchmarks and settings demonstrate the superior performance of VeRPO over baselines, with zero GPU memory overhead and negligible time cost.
+\end{itemize}
+
+\section{Related Work}
+
+\subsection{RL for Code Generation} 
+RL has become the dominant paradigm for advancing code generation capabilities of LLMs \cite{liu2023rltf,wang2024enhancing-rlwithcode, zhang2025surveyreinforcementlearninglarge-rlwithcode}.
+Early approaches, such as CodeRL \cite{le2022coderl} utilizing the REINFORCE algorithm \cite{williams1992Reinforce-algo} and PPOCoder \cite{shojaee2023execution-ppocoder} adapting the Proximal Policy Optimization framework (PPO; \citealp{schulman2017ppo}), incorporate execution feedback as reward signals to optimize models, laying the foundation for RL in code generation. Recently, DeepSeek-R1 \cite{guo2025deepseek} has significantly advanced the performance at scale by combining an efficient RL framework, GRPO, with chain-of-thought reasoning, catalyzing the interest in RL for code generation. Building upon these advances, recent research has extended these strategies to the multi-turn agentic setting. Works such as $\mu\text{CODE}$ \cite{jain2025multiturnthrougOne} and RLEF \cite{gehring2024rlef} leverage RL to facilitate self-correction in iterative refinement loops, enabling LLMs to tackle complex, long-horizon coding tasks.
+
+\subsection{Reward Design in Code Generation}
+Reward design is central to the optimization of RL in code generation \cite{sun2025large-rewarddesign,xu2025policy-rewarddesign}.
+Mainstream approaches typically leverage outcome-driven rewards derived from unit test execution. 
+Specifically, GRPO and its variants \cite{yu2025dapo, yue2025vapo, ahmadian2024back-leave-one-out} utilize binary execution outcomes as a verifiable reward signal, aligning policy outputs with the functional correctness of code tasks. 
+Concurrently, recent research has pivoted toward external RMs to synthesize richer, continuous signals for precise optimization. For instance, AceCoder \cite{zeng-etal-2025-acecoder} utilizes large-scale preference code pairs to train an RM specifically tailored for code generation, enabling fine-grained quality assessment of LLM-generated code snippets. Similarly, CodePRM \cite{li2025codeprm} trains an RM with execution traces to provide dense supervision for intermediate code reasoning steps. However, both reward paradigms face inherent limitations: outcome-driven rewards enforce functional correctness but introduce severe sparsity, while RM-based methods offer dense supervision but suffer from misalignment and prohibitive computational cost.
+
+In this paper, we establish a novel RL framework that bridges this gap, synthesizing robust and dense rewards fully grounded in verifiable execution feedback without relying on external models. 
+
+\section{Preliminaries}
+\label{sec:preliminaries}
+\subsection{Code Generation as an MDP}\label{MDP}
+We formulate the code generation task as a Markov Decision Process (MDP). Within this formulation, a policy $\pi_\theta$ iteratively interacts with a code execution environment over a horizon of T turns. At each turn $t \in \{1, \dots, T\}$, the policy generates a code snippet $y_t$ conditioned on the state $s_t = (x, y_1, o_1, \ldots, y_{t-1}, o_{t-1})$, which encapsulates the complete interaction history comprising the initial problem prompt $x \in \mathcal{X}$, prior code snippets $\{y_i\}_{i=1}^{t-1}$ and their corresponding execution feedback $\{o_i\}_{i=1}^{t-1}$. Specifically, the state is initialized as $s_1 = \{x\}$.  Upon generation, the environment executes $y_t$ against a test suite $\mathcal{U}_x = \{u_1, \dots, u_{\small{|\mathcal{U}_x|}} \}$, where $\small{|\mathcal{U}_x|}$ denotes the test count, to produce the corresponding execution feedback $o_t$. Termination occurs either when $y_t$ passes the entire test suite $\mathcal{U}_x$ or the turn limit $T$ is reached, yielding a trajectory $\tau = \{(s_1, y_1, o_1), (s_2, y_2, o_2) \dots,(s_{|\tau|}, y_{|\tau|}, o_{|\tau|})\}$, where $|\tau|$ represents turn count of the trajectory. This formulation naturally unifies both single-turn code generation ($T=1$), where the model produces a single solution attempt without refinement, and multi-turn code generation ($T > 1$), which iteratively refines via sequential interactions.
+
+\subsection{Group-Based RL}
+Group-based RL has emerged as the prominent RL paradigm for optimizing LLMs. Unlike traditional actor-critic frameworks such as PPO, which require a separate value network to compute advantages for policy optimization, group-based RL estimates advantages solely from trajectories sampled under the old policy $\pi_{\theta_{\text{old}}}$. Specifically, given a prompt $x$, a group of $N$ trajectories $\mathcal{G}_x = \{\tau_1, \tau_2, \ldots, \tau_N\}$ is sampled under $\pi_{\theta_{\text{old}}}$. Each trajectory $\tau_i$ receives 
+a scalar reward $R(\tau_i)$ indicating its overall quality (e.g., 1 for correct, 0 for incorrect). The advantages are then estimated by normalizing rewards against the group's aggregate statistics to guide policy updates. As a representative framework, GRPO computes advantages by standardizing the rewards within the sampled group:
+\begin{equation}
+A({\tau}_{i})=\frac{R({\tau}_{i})-\operatorname{mean}\left(\left\{R({\tau}_{j})\right\}_{j=1}^{N}\right)}{\operatorname{std}\left(\left\{R({\tau}_{j})\right\}_{j=1}^{N}\right)}.
+\label{eq:grpo}
+\end{equation}
+
+By eliminating the need for external value networks, group-based RL significantly reduces memory overhead and facilitates scalability.
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=0.9\textwidth]{method33.pdf}
+  \caption{Overview of VeRPO. VeRPO fuses turn-level dense rewards derived from dynamically weighted partial success with global trajectory-level outcomes, enabling robust and dense policy optimization for code generation.}%\vspace{-3pt}
+  \label{fig:method}
+\end{figure*}
+
+\section{Method}\label{method}
+We introduce VeRPO, a novel RL framework that synthesizes robust and dense rewards fully grounded in verifiable execution feedback. As illustrated in Figure \ref{fig:method}, building upon the scalable group-based RL framework, VeRPO introduces an intrinsic dynamic weighting mechanism that estimates test difficulty via aggregated online execution statistics within the sampled group. By summing the estimated weights of passed tests at each turn, VeRPO assigns a turn-level dense reward throughout the trajectories, capturing intermediate progress from local partial success. To solidify alignment between local partial success and end-to-end functional correctness, VeRPO incorporates the trajectory-level execution outcome as a global reward to anchor the optimization. Finally, VeRPO effectively orchestrates the two notions of reward design with a dual-level advantage estimation.
+
+It is noteworthy that the hierarchical design of VeRPO makes no pre-specification of the number of turns in each trajectory. Thus, grounded in the unified MDP formulation in Section \ref{MDP}, VeRPO inherently accommodates both single- ($T=1$) and multi-turn ($T>1$) settings without structural modification, establishing a robust reward paradigm applicable to diverse code generation settings.
+
+\subsection{Dense Rewards from Partial Success}\label{method:partial success}
+Following the scalable group-based RL framework, VeRPO samples a group of $N$ trajectories $\mathcal{G}_x = \{\tau_1, \ldots, \tau_{N}\}$ for each prompt $x$, where each trajectory consists of a sequence of turn-level interactions $\tau_i = \{(s_{i,t}, y_{i,t}, o_{i,t})\}_{t=1}^{|\tau_i|}$. To synthesize dense learning signals without external reward models, VeRPO assigns non-zero rewards to varying levels of partial success at each turn. Naive approaches that quantify partial success solely as the proportion of passed unit tests neglect the difficulty variance among them, risking reward hacking where the policy overfits to an abundance of trivial tests. To mitigate this, VeRPO introduces an intrinsic dynamic weighting mechanism that estimates the relative difficulty of each unit test based on its online execution statistics during training, ultimately yielding a dense reward signal by summing the weighted partial success.  
+
+Intuitively, unit tests with lower pass rates represent greater optimization challenges for the current policy, necessitating higher weights for policy optimization. To this end, we first estimate the empirical pass rate $\rho_j$ for each unit test $u_j$ derived from execution statistics of the sampled group:
+\begin{equation}
+\rho_j = \frac{\sum_{\tau_i \in \mathcal{G}_x} \sum_{t=1}^{|\tau_{i}|} p_{t,i}^{(j)}}{\sum_{\tau_i \in \mathcal{G}_x} |\tau_{i}|},
+\label{pass-rate}
+\end{equation}
+where $p_{t,i}^{(j)} = 1$ if turn $t$ in trajectory $\tau_i$ passes test $u_j$, and $0$ otherwise. Following Eq. \ref{pass-rate}, an inverse-pass-rate weight to quantify the empirical difficulty of each unit test is then formalized as: 
+\begin{equation}
+w_j = \exp(-\alpha \rho_j),
+\label{eq:w_J}
+\end{equation}
+where $\alpha > 0$ controls the sensitivity to difficulty, assigning higher weights to challenging tests that the current policy struggles with, while down-weighting simple tests that are well-mastered.
+
+While Eq. \ref{eq:w_J} down-weights trivial tests, it treats them in isolation. As training progresses and policy capability improves, more test cases become trivial to the policy and eventually dominate the test suite. Consequently, an increasing number of generated code snippets accumulate abundant low-weight trivial tests, receiving a higher aggregated reward than those solving a few but critical challenges, thereby hindering learning efficiency.  To mitigate this, we employ Gaussian Kernel Density Estimation to quantify the local concentration of test difficulties $\hat{\rho}_j$. This allows us to explicitly penalize distributional redundancy of trivial tests via an inverse-density weighting scheme, yielding a normalized weight $w_j'$:
+
+\begin{equation}
+\hat{\rho}_j = \sum_{j'=1}^{\small{|\mathcal{U}_x|}} \exp\left(-\frac{(\rho_j - \rho_{j'})^2}{2\sigma^2}\right),
+\end{equation}
+\begin{equation}
+w_j' = \frac{w_j}{\hat{\rho}_j + \epsilon},
+\end{equation}
+where an adaptive bandwidth $\sigma = \frac {\text{std}(\{\rho_j\}_{j=1}^{\small{|\mathcal{U}_x|}})}{2}$ is adopted for robustness. As such, $w_j'$ preserves dominant weights for challenging and rare tests while dampening the cumulative signal of easy ones.
+
+By summing the normalized weights of passed tests, each turn in the trajectory is assigned a localized and dense reward $R^{turn}$, computed as:
+\begin{equation}
+R^{turn}(\tau_i, t) = \sum_{j=1}^{\small{|\mathcal{U}_x|}} w_j' \cdot p_{t,i}^{(j)},
+\label{reward}
+\end{equation}
+which ensures the full functional correctness yields the maximum reward while extracting dense and critical learning signals from local partial success. 
+
+\subsection{Global Outcome as an Anchor}\label{method:anchor}
+To solidify the alignment between local weighted partial success and end-to-end functional correctness, we further incorporate the trajectory-level execution outcome as a global reward to anchor the optimization. 
+Specifically, each trajectory $\tau_i$ yields a binary outcome $R^{traj}(\tau_{i}) \in \{0,1\}$, where $R^{traj}(\tau_{i}) = 1$ if the terminal execution feedback $o_{|\tau_i|}^{(i)}$ passes the complete test suite $\mathcal{U}_x$ and $R^{traj}(\tau_{i}) = 0$ otherwise. This global signal effectively anchors the optimization process, aligning policy updates with end-to-end functional correctness and stabilizing training. To further encourage efficiency, especially for multi-turn code generation, we introduce an efficiency-decayed reward formulation:
+\begin{equation}
+\tilde{R}^{traj}(\tau_{i}) = R^{traj}(\tau_{i}) \cdot \gamma^{|\tau_{i}|},
+\end{equation} 
+where $\gamma \in (0,1]$ is the decay factor, incentivizing concise trajectories that solve the problem in fewer turns. 
+
+\subsection{VeRPO Policy Optimization}
+To integrate the two notions of reward design detailed in Section \ref{method:partial success} and \ref{method:anchor}, VeRPO employs a dual-level advantage estimation framework. At the turn-level, we compute a turn relative advantage using the localized $R^{turn}(\tau_i, t)$ as:
+\begin{equation}
+\begin{split}
+  G(\mathcal{G}_x) = \{R^{turn}(\tau_{i}, t) \mid & \tau_{i} \in \mathcal{G}_x,  1 \leq t \leq |\tau_{i}|\},
+\end{split}
+\end{equation}
+\begin{equation}
+  A^{turn}(\tau_i, t) = \frac{R^{turn}(\tau_i, t) - \operatorname{mean}(G(\mathcal{G}_x))}{F_{\operatorname{norm}}(G(\mathcal{G}_x))},
+\end{equation}
+and at the trajectory level, a trajectory relative advantage is derived from the global $\tilde{R}^{traj}(\tau_{i})$: 
+\begin{equation}
+A^{traj}(\tau_{i}) = \frac{\tilde{R}^{traj}(\tau_{i}) - \operatorname{mean}(\{\tilde{R}^{traj}(\tau_{j})\}_{j=1}^N)}{F_{\operatorname{norm}}(\{\tilde{R}^{traj}(\tau_{j})\}_{j=1}^N)},
+\end{equation}
+where $F_{\operatorname{norm}}$ is the normalization factor. While the standard GRPO defaults to $F_{\text{norm}} = \operatorname{std}$, this normalization introduces task-level difficulty bias, where low-variance groups (e.g., trivial or hard tasks) result in inflated advantage estimates during policy updates.
+To ensure stability across varying task difficulties, we set a constant normalization factor $F_{\text{norm}} = 1$, which yields an unbiased estimator to mitigate variance issues \cite{liu2025understandingr1-zero-likeTraining}.
+
+We then integrate the trajectory- and turn-level advantages into a unified advantage function. The combined advantage for a specific turn $t$ in trajectory $\tau_i$ is defined as:
+\begin{equation}
+A(\tau_i, t) = A^{traj}(\tau_i) + \beta \cdot A^{turn}(\tau_i, t),
+\end{equation}
+where $\beta \in \mathbb{R}_{\ge 0}$ is a hyperparameter balancing the contribution of the two advantages. The trajectory-level advantage $A^{traj}(\tau_i)$ anchors the global optimization, ensuring policy updates adhere to end-to-end functional correctness, while the turn-level advantage $A^{turn}(\tau_i, t)$ enriches the learning signal with dense feedback from local partial success to navigate intermediate states. Finally, the policy optimization objective of VeRPO is formalized as:
+\begin{equation}
+\begin{split}
+  \mathcal{J}_{\text{VeRPO}}(\theta) = & \mathbb{E}_{\substack{x \sim \mathcal{X} \\ \{\tau_i\}_{i=1}^N \sim \pi_{\theta_{\text{old}}}}} \Biggl[ \frac{1}{\sum_{i=1}^N |\tau_{i}|} \sum_{i=1}^N \sum_{t=1}^{|\tau_i|} \\  
+  &\min \Big( \psi_\theta(y_t^{(i)}) A(\tau_i, t), \\
+  & \operatorname{clip}(\psi_\theta(y_t^{(i)}), 1\pm\epsilon) A(\tau_i, t) \Big) \Biggr],
+\end{split}
+\end{equation}
+where $\psi_\theta(y_t^{(i)}) = \frac{\pi_\theta(y_t^{(i)} \mid s_t^{(i)})}{\pi_{\theta_{\text{old}}}(y_t^{(i)} \mid s_t^{(i)})}$ is the importance sampling ratio, and $\epsilon$ is the clipping threshold. Notably, we omit the KL penalty to foster exploration. %of diverse solution paths in the programming space.
+
+
+\section{Experiments}
+
+\subsection{Setup}
+
+\paragraph{Datasets.}  For training, we utilize the subset dataset derived from \cite{luo2025deepcoder}, comprising 7.4K filtered and verified code problems from TACO \cite{li2023taco}. We evaluate performance across four mainstream code generation benchmark suites: 1) HumanEval \cite{chen2021humaneval} along with its enhanced variant HumanEval-Plus \cite{liu2023humanevalplus}; 2) BigCodeBench \cite{zhuo2024BigCodeBench} reporting results on both its Full and Hard subsets; 3)  LiveCodeBench (LCB, V6, 2023.05--2025-04) \cite{jain2024LiveCodeBench}; and 4) Codeforces problems derived from CodeElo \cite{quan2025codeelo}. 
+
+\paragraph{Baselines.}  We benchmark VeRPO against the predominant group-based method, GRPO, instantiated with two distinct reward configurations: 1) \textit{Vanilla Outcome-driven rewards}, representing the standard GRPO configuration that relies on binary execution outcomes indicating overall functional correctness; and 2) \textit{RM-based Dense rewards},  which leverages an external RM to assign fine-grained rewards to intermediate turns. Following prior work, we employ AceCoderRM-7B \cite{zeng-etal-2025-acecoder} to generate turn-level dense rewards.
+
+\paragraph{Implementation.}  We employ Qwen3-8B as the backbone policy for RL training. To evaluate performance across varying horizons, we conduct training and evaluation in both single-turn (ST, $T=1$) and multi-turn (MT, $T=4$) code generation settings. During training, we utilize a rollout batch size of 32 code problems, with 10 responses sampled per problem, a maximum response length of 16,384 tokens, and a sampling temperature of 1.0 to encourage exploration. For evaluation, we set the maximum response length to 16,384 tokens and sampling temperature to 0.6. We report pass@1 using the unbiased estimator \cite{chen2021humaneval} as the primary metric for functional correctness. See Appendix \ref{sec:appendix_training_evaluation_details} for training and evaluation details.
+
+\subsection{Results and Analysis}
+\subsubsection{Performance of VeRPO}\label{Performance}
+Table \ref{tab:my_results_restructured} empirically validates the superior performance of VeRPO across diverse code generation benchmarks and training/evaluation configurations.
+In the single-turn training and evaluation setting, VeRPO (ST) achieves the best performance across all benchmarks, obtaining an average improvement of +1.26 and +2.18 over the outcome-driven GRPO (ST) and the RM-based AceCoder (ST), respectively. This superiority in the single-turn setting underscores the intrinsic efficacy of VeRPO, yielding superior learning signals even within a standard prompt-response-feedback paradigm.
+
+Crucially, in the more complex multi-turn setting, we observe that RM-based AceCoder (MT) suffers from catastrophic training collapse (see Appendix \ref{sec:appendix_training_stability_analysis} for detailed information), which underscores the inherent instability of relying on external black-box reward models for iterative multi-turn optimization. In sharp contrast, VeRPO is fully grounded in verifiable execution feedback, guaranteeing a robust and stable optimization process. Compared to the analogous execution-based outcome-driven GRPO (MT), VeRPO (MT) achieves a significant average performance gain of +3.13\% in pass@1. The performance gap is pronounced on challenging benchmarks, reaching +8.83 on Codeforces. This substantial margin demonstrates that VeRPO's capability to extract informative and dense learning signals from partial success is critical for solving complex problems. Furthermore, VeRPO shows robust generalization in cross-setting evaluations, consistently surpassing all baselines even when the evaluation horizon differs from the training configuration.
+
+\begin{figure}[t]
+  \includegraphics[width=\columnwidth]{degenerate_groups_ratio_final_v5.pdf}
+  \caption{Signal efficiency analysis of GRPO and VeRPO. The degenerate group ratio represents the fraction of groups yielding zero advantage within a training batch. Lower values indicate more efficient signal utilization.}%\vspace{-4pt}
+  \label{fig:experiments1}
+\end{figure}
+
+\subsubsection{Ablation Study}
+\paragraph{Effect of components in VeRPO.}  We conduct ablation studies in the multi-turn setting to validate the effect of three key components in the optimization objective of VeRPO: the localized turn-level advantage $A^{turn}$, the global trajectory-level advantage $A^{traj}$, and the fixed normalization factor $F_{\operatorname{norm} }=1$. We compare VeRPO against variants that omit turn-level advantage $\text{w/o }A^{turn}$, omit trajectory-level advantage $\text{w/o }A^{traj}$, and replace the fixed normalization with standard deviation $\text{w/ std}$.  
+
+As presented in Table \ref{tab:Ablation-Study}, the omission of any component results in performance degradation, confirming the necessity of our holistic design. First, the removal of the dense turn-level advantage $A^{turn}$ essentially reverts the framework to a sparse outcome-driven regime, which leads to the most precipitous performance decline, underscoring the critical role of $A^{turn}$ in VeRPO and the necessity to extract dense supervision that guides precise optimization.
+Second, removing the global trajectory-level advantage $A^{traj}$ consistently results in performance declines. Without the learning signal of a clear, global distinction regarding overall functional correctness, the policy optimization risks stagnating in suboptimal policies and impeding convergence efficiency.
+Finally, for the normalization factor, we observe that our default setting ($F_{\operatorname{norm}}=1$) consistently outperforms the $\text{std}$ normalization ($F_{\operatorname{norm}}=\text{std}$). This performance gain validates that the constant normalization $F_{\operatorname{norm}}=1$ provides a more robust normalization, avoiding the task-difficulty bias that standard deviation introduces. Notably, the performance gap between different normalization designs is considerably smaller than that observed from ablating the advantage components, indicating that the design of the local turn- and global trajectory-level signals is the primary driver of performance gains.
+
+\begin{table}[t]
+\centering
+\fontsize{9.5pt}{9.9pt}\selectfont
+\setlength{\tabcolsep}{1.5pt}
+\begin{tabular}{cccccc} 
+\toprule
+\multirow{2}{*}{Method} & HumanEval & \multicolumn{2}{c}{BigCodeBench} & LCB & Codeforces \\ 
+\cmidrule(lr){2-2} \cmidrule(lr){3-4} \cmidrule(lr){5-5} \cmidrule(lr){6-6}
+ & Plus & Full & Hard & V6 & CodeElo \\ 
+\midrule
+w/o $A^{turn}$ & 91.58 & 61.58 & 44.25 & 30.64 & 34.68 \\
+w/o $A^{traj}$ & 92.31 & 62.12 & 45.18 & 31.14 & 37.62 \\
+w/ std & 93.06 & 61.87 & 44.67 & 31.64 & 38.05 \\
+\midrule
+VeRPO & \textbf{93.14} & \textbf{62.52} & \textbf{45.69} & \textbf{33.07} & \textbf{40.44} \\ 
+\bottomrule
+\end{tabular}
+\caption{Ablation study on components of VeRPO.}
+\label{tab:Ablation-Study}
+\end{table}
+
+
+\begin{table}[t]
+\centering
+\fontsize{8.8pt}{9.79pt}\selectfont
+\setlength{\tabcolsep}{1.15pt}
+\begin{tabular}{ccccccc}
+\toprule
+\multirow{2}{*}{$A^{traj}$} & \multirow{2}{*}{$R^{turn}$} & HumanEval & \multicolumn{2}{c}{BigCodeBench} & LCB & Codeforces \\ \cmidrule(lr){3-3} \cmidrule(lr){4-5} \cmidrule(lr){6-6} \cmidrule(lr){7-7}
+ &  & Plus & Full & Hard & V6 & CodeElo \\ \midrule
+ GRPO & - & 91.23 & 60.91 & 43.32 & 30.50 & 31.61\\ \midrule
+- & PS & 91.69 & 59.45 & 43.49 & 29.64 & 33.36 \\
+- & Diff & 91.46 & 59.78 & 41.55 & 30.28 & 35.23 \\
+- & VeRPO & 92.31 & 62.12 & 45.18 & 31.14 & 37.62 \\\midrule
+VeRPO & PS & 92.14 & 61.23 & 44.34 & 32.00 & 35.75 \\
+VeRPO & Diff & 91.31 & 60.00 & 43.15 & 30.57 & 35.11 \\ 
+VeRPO & VeRPO & \textbf{93.14} & \textbf{62.52} & \textbf{45.69} & \textbf{33.07} & \textbf{40.44} \\ \bottomrule
+\end{tabular}
+\caption{Ablation study on different approaches to quantify partial success when constructing turn-level dense $R^{turn}$. PS: raw pass rates; Diff: difficulty-weighted rewards without density normalization}
+\label{tab:ab2}
+\end{table}
+
+\paragraph{Ablation on turn-level dense rewards.} To rigorously validate the turn-level dense reward formulation $R^{turn}$ proposed in Section \ref{method:partial success}, we benchmark VeRPO against two alternative execution-based dense reward designs that quantify partial success: (a) \textit{Raw Pass Rate} (PS), a naive baseline using the proportion of passed unit tests, ignoring difficulty variance; and (b) \textit{Difficulty-Weighted only} (Diff), which applies the inverse-pass-rate weighting (Eq. \ref{eq:w_J}) but excludes the kernel density normalization. We evaluate the effectiveness of these designs in two distinct settings: utilizing the local turn-level dense signals $R^{turn}$ in isolation, and in conjunction with the global trajectory-level advantage $A^{traj}$.
+
+As shown in Table \ref{tab:ab2}, when considering turn-level rewards alone, relying solely on raw pass rates or simple difficulty-weighted schemes leads to substantial performance degradation compared to VeRPO, even underperforming the standard outcome-driven GRPO baseline devoid of dense turn-level signals. This degradation is particularly pronounced on complex benchmarks such as BigCodeBench-Hard, LCB, and Codeforces. These results empirically validate that naive dense reward formulations can be counterproductive by introducing misleading learning signals, thereby underscoring the critical necessity of a robust and dense reward design. Crucially, even when integrated with the global trajectory-level advantage $A^{traj}$ in VeRPO, they still fail to bridge the performance gap. This persistent margin underscores the intrinsic superiority of VeRPO’s turn-level dense reward design over conventional execution-based feedback mechanisms, which successfully filters noise to construct a robust and informative learning signal.
+
+\subsubsection{Signal Efficiency and Information Loss}
+To investigate the mechanisms driving VeRPO's performance superiority, we analyze signal efficiency compared to the outcome-driven GRPO in the multi-turn setting. We introduce the degenerate group ratio to quantify information loss, defined as the proportion of rollout groups where all trajectories yield identical rewards and thus degenerate to zero relative advantage, resulting in vanishing gradients and no effective policy update.
+
+As illustrated in Figure \ref{fig:experiments1}, the outcome-driven GRPO exhibits a persistently high degenerate group ratio between 60\% and 70\%. This phenomenon indicates that the policy model wastes substantial computational resources without meaningful policy updates, resulting in significant training inefficiency. In stark contrast, VeRPO maintains a degenerate group ratio consistently below 25\% and exhibits a steady downward trend as training progresses. This empirical evidence underscores the prevalence of partial success in code generation tasks, indicating that total failure is a minority of cases rather than the norm. By effectively extracting fine-grained learning signals from abundant partial success, VeRPO significantly enhances sample efficiency and extends the effective exploration boundaries in complex reasoning tasks.
+
+\subsubsection{Computational Cost}
+Finally, we assess the computational overhead introduced by VeRPO. As detailed in Section \ref{method}, VeRPO is built upon the efficient group-based RL framework, inheriting an identical core architecture with GRPO, including grouped rollout sampling, computation of old log-probabilities, and clipped actor policy updates. Both pipelines eliminate the need for auxiliary critic or reward models by relying solely on execution feedback to compute rewards and advantages, thus sharing identical GPU memory consumption and LLM rollout overheads.
+
+The only additional computational burden in VeRPO is the turn-level advantage estimation pipeline, which encapsulates the synthesis of turn-level dense rewards. To quantify its impact, we present a fine-grained breakdown of the training time per iteration. As observed in Figure \ref{fig:experiments2}, the additional overhead for computing $A^{turn}$ is negligible relative to the dominant costs of rollout and policy update, introducing only 0.10s per iteration and accounting for < 0.02\% of the total training time. These results demonstrate that VeRPO achieves dense and superior supervision with virtually zero marginal computational cost, effectively defying the conventional trade-off between reward granularity and computational efficiency.
+
+
+\begin{figure}[t]
+  \includegraphics[width=\columnwidth]{bar1.pdf}
+  \caption{Computational analysis of VeRPO. Components shared with GRPO are highlighted in blue, while VeRPO-specific computations are shown in orange. A broken y-axis scale is employed to enhance the visualization of small values.}
+  \label{fig:experiments2}
+\end{figure}
+
+\section{Conclusion}
+We propose VeRPO, a novel RL framework that synthesizes robust and dense rewards fully grounded in verifiable execution feedback. VeRPO addresses the sparsity of outcome-driven rewards and the instability of costly external reward models, extracting fine-grained learning signals from weighted partial success while solidifying the alignment with end-to-end functional correctness via global execution outcome anchors. Empirical results demonstrate that VeRPO significantly outperforms both outcome-driven and RM-based baselines with negligible computational cost, establishing a highly scalable, stable, and effective paradigm for evolving LLMs through verifiable execution.
+
+% Bibliography entries for the entire Anthology, followed by custom entries
+%\bibliography{anthology,custom}
+% Custom bibliography entries only
+\bibliography{custom}
+
+\appendix
+
+\section{Training and Evaluation Details}
+\label{sec:appendix_training_evaluation_details}
+All experiments in this paper are implemented on top of veRL framework \cite{sheng2025hybridflow-verl} and conducted on 8× NVIDIA H800 GPUs. The source code of VeRPO is coming soon. 
+\paragraph{Training Configuration.} we utilize a rollout batch size of 32 code problems, with 10 responses sampled per problem. We set the maximum response length to 16384, with sampling parameter temperature = 1.0, top-p = 1.0 and top-k = -1.0. The policy learning rate is fixed at $1 \times 10^{-6}$. Following DAPO \cite{yu2025dapo}, we adopt the Clip-Higher mechanism, with clipping parameters $\epsilon_\text{low}$ = 0.2 and $\epsilon_\text{high}$ = 0.28 to balance exploration and exploitation. All RL methods in the training omit the KL divergence penalty to foster exploration. We enable dynamic batch sizing in veRL for efficient training. For VeRPO, the difficulty sensitivity coefficient $\alpha$ is set to 2.0, the decay factor $\gamma$ is set to 0.95, and the advantage balancing coefficient $\beta$ is set to 1.0 without additional tuning.
+\paragraph{Evaluation Configuration.} As \cite{yang2025qwen3} recommended, we set sampling parameters to temperature 0.6, top-p 0.95, and top-k 20. The maximum response length is set to 16384. To rigorously evaluate functional correctness, we adopt the unbiased estimator for pass@$k$ proposed by \citealp{chen2021humaneval}, which calculates the expected probability that at least one of the top-$k$ generated code solutions passes the unit tests, defined as:$$\text{pass}@k := \mathbb{E}_{\text{problems}} \left[ 1 - \frac{\binom{n-c}{k}}{\binom{n}{k}} \right],$$ where $n$ denotes the number of samples generated per problem, and $c$ is the number of samples that pass all unit tests. In our experiments, we generate $n=8$ candidate solutions for each problem to robustly estimate the pass@1 metric.
+
+
+\section{Training Analysis}
+\subsection{Training Stability Analysis}
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=\linewidth]{training_collapse_analysis.pdf}
+    \caption{The visualization of the average ground-truth pass rate computed on the online training rollout batches.
+    }
+    \label{fig:collapse_curve}
+\end{figure}
+\label{sec:appendix_training_stability_analysis}
+In Section \ref{Performance}, we observed that the RM-based baseline, AceCoder (MT), suffers from training collapse in multi-turn settings. Here, we provide a detailed visualization and analysis of this phenomenon.
+
+The evolution of rollout performance is visualized in Figure \ref{fig:collapse_curve}, which tracks the online average pass rate measured directly on the on-policy rollout batches.  While all methods show comparable performance in early stages, the RM-based AceCoder fails to exhibit a distinct upward trend and succumbs to catastrophic collapse after approximately 190 training steps. In contrast, VeRPO and the outcome-driven GRPO, which are both fully grounded in verifiable execution feedback, maintain robust stability and improvement. This phenomenon highlights the inherent vulnerability of relying on fixed reward models for code generation optimization. Since it is impractical for learned RMs to exhaustively cover the infinite semantic space of complex programs, they inevitably yield misaligned signals for out-of-distribution response, thereby destabilizing the optimization process.  Conversely, signals derived from verifiable execution feedback are inherently immune to such distribution shifts, further underscoring the necessity of VeRPO's design to generate dense learning signals fully grounded in execution feedback.
+
+\subsection{Training Dynamics}
+\begin{figure}[h]
+    \centering
+    \includegraphics[width=\linewidth]{training_dynamics_comparison.pdf}
+    \caption{Training dynamics on Codeforces (pass@1).
+    }
+    \label{fig:training_dynamic}
+\end{figure}
+We analyze model evolution during training by tracking the performance on Codeforces from CodeElo~\cite{quan2025codeelo} using the unbiased pass@1 metric. 
+As illustrated in Figure~\ref{fig:training_dynamic}, while both VeRPO (Ours) and GRPO exhibit comparable performance in the initial training phase (first 50 steps), VeRPO demonstrates significantly superior sample efficiency and convergence stability as training progresses. Starting from approximately Step 80, VeRPO establishes a distinct performance lead, maintaining a robust upward trend without the plateauing observed in the GRPO baseline.  Crucially, VeRPO achieves a peak pass@1 of $\sim$40.0\% at the end of training,  surpassing GRPO ($\sim$34.0\%) by a substantial margin. 
+This divergence highlights that VeRPO facilitates more effective policy optimization, enabling the model to explore and stabilize on higher-quality solutions given the same computational budget.
+
+\section{Dataset Details}\label{appendix_dataset_detail}
+
+\begin{table}[th]
+\fontsize{10pt}{9.9pt}\selectfont
+\renewcommand{\arraystretch}{1.3}
+    \centering
+    \begin{tabular}{cc}
+        \toprule
+        \textbf{Metric} & \textbf{Statistics} \\
+        \midrule
+        \# Total Examples & $7436$ \\
+        \# Test Cases Mean $\pm$ Std. Dev. & $104.08 \pm 70.42$ \\
+        \# Test Cases Range (Min -- Max) & $6$ -- $1440$ \\
+        \# Sparse Examples ($\le 10$ Tests ) & $804$ ($10.81\%$) \\
+        
+        \bottomrule
+    \end{tabular}
+    \caption{Dataset statistics of TACO subset derived from \cite{luo2025deepcoder}. ``Sparse Examples'' denotes problems with limited unit tests ($\le 10$ inputs).}\label{tab:unit_test_stats}
+\end{table}
+
+We utilize a filtered subset of the TACO dataset derived from \cite{luo2025deepcoder}. The dataset comprises $7436$ algorithmic problems, each associated with a varying number of unit tests. The statistical distribution of these test cases is summarized in tabel \ref{tab:unit_test_stats}.
+
+
+\end{document}
