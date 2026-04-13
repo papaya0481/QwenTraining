@@ -40,14 +40,14 @@ def make_map_fn(split):
             "ability": "code",
             "reward_model": {
                 "style": "rule",
-                "ground_truth": example["answer"]
+                "ground_truth": example["test_cases"]
             },
             "extra_info": {
                 "index":      idx,
                 "fn_mode":    example["fn_mode"],
                 "fn_name":    example["fn_name"],
                 "difficulty": example["difficulty"],
-                "test_cases": example["test_cases"],
+                "answer": example["answer"],
                 "test_hash":  test_hash,
             },
         }
