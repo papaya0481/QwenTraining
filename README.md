@@ -61,10 +61,13 @@ uv pip install vllm deepspeed --torch-backend=auto
 ```
 uv pip install git+https://github.com/ShaohonChen/PyExt.git@py311support
 ```
-### 开启ray
+### 开启训练
+开启ray
 ```
 ray start --head --dashboard-port=8900
 ```
+然后运行 `scripts/dapo/run_dapo.sh`.
+
 
 ## 其他
 1. 关于多卡运行的问题[issue](https://github.com/modelscope/ms-swift/issues/3991)

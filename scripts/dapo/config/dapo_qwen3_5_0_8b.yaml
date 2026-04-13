@@ -77,6 +77,7 @@ actor_rollout_ref:
   rollout:
     trace: # 添加查看val data的回答
       backend: weave
+      token2text: true  # 能够查看生成的text
     name: vllm
     n: 16
     dtype: bfloat16
