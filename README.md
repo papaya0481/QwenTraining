@@ -52,6 +52,10 @@ uv pip install -e .
 uv pip install vllm deepspeed --torch-backend=auto
 ```
 
+## Verl
+### VeRPO论文文件
+在 `docs/acl_latex.tex` 中有 VeRPO 论文的 LaTeX 文件，供AI生成codes时参考。
+
 ## 其他
 1. 关于多卡运行的问题[issue](https://github.com/modelscope/ms-swift/issues/3991)
 2. Qwen3.5的最佳时实践[Qwen3.5](https://swift.readthedocs.io/zh-cn/latest/BestPractices/Qwen3_5-Best-Practice.html)
