@@ -16,6 +16,7 @@ data:
   truncation: error
   max_prompt_length: 4096
   max_response_length: 12288 # 8192 + buffer 4096
+  filter_overlong_prompts: true
   gen_batch_size: 12
   train_batch_size: 4
   shuffle: true
@@ -82,6 +83,7 @@ actor_rollout_ref:
     n: 16
     dtype: bfloat16
     log_prob_use_dynamic_bsz: true
+    log_prob_micro_batch_size_per_gpu: 16
     log_prob_max_token_len_per_gpu: 12288
     gpu_memory_utilization: 0.3
     tensor_model_parallel_size: 1
@@ -108,6 +110,14 @@ reward_model:
       penalty_factor: 1.0
       log: true
 
+reward:
+  custom_reward_function:
+    path: ${hydra:runtime.cwd}/scripts/config/verl_codegen1_reward.py
+    name: compute_score
+    reward_kwargs:
+      timeout_sec: 8
+      memory_limit_mb: 1024
+
 trainer:
   # logger: [console, wandb]
   loggerr: [console]
@@ -119,4 +129,5 @@ trainer:
   test_freq: 5
   save_freq: 5
   total_epochs: 1
+  total_training_steps: 20
   default_local_dir: verl_ckpts/${trainer.project_name}/${trainer.experiment_name}
