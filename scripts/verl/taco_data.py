@@ -39,7 +39,7 @@ def make_map_fn(split):
             test_hash = [f"{idx}_0_{h}"]
 
         data = {
-            "data_source": "taco",
+            "data_source": "taco_rl",
             "prompt": prompt,
             "ability": "code",
             "reward_model": {

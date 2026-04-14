@@ -15,9 +15,9 @@ data:
   prompt_key: prompt
   truncation: error
   max_prompt_length: 4096
-  max_response_length: 12288 # 8192 + buffer 4096
+  max_response_length: 2560 # 8192 + buffer 2048
   filter_overlong_prompts: true
-  gen_batch_size: 12
+  gen_batch_size: 16
   train_batch_size: 4
   shuffle: true
   seed: 42
@@ -51,7 +51,7 @@ actor_rollout_ref:
     clip_ratio_high: 0.28
     clip_ratio_c: 10.0
     use_dynamic_bsz: true
-    ppo_max_token_len_per_gpu: 12288
+    ppo_max_token_len_per_gpu: 2560
     ppo_mini_batch_size: 32
     entropy_coeff: 0
     grad_clip: 1.0
@@ -79,17 +79,18 @@ actor_rollout_ref:
     trace: # 添加查看val data的回答
       backend: weave
       token2text: true  # 能够查看生成的text
+      max_samples_per_step_per_worker: 3
     name: vllm
     n: 16
     dtype: bfloat16
     log_prob_use_dynamic_bsz: true
     log_prob_micro_batch_size_per_gpu: 16
-    log_prob_max_token_len_per_gpu: 12288
-    gpu_memory_utilization: 0.3
+    log_prob_max_token_len_per_gpu: 2560
+    gpu_memory_utilization: 0.5
     tensor_model_parallel_size: 1
     enable_chunked_prefill: true
-    max_num_batched_tokens: 12288
-    max_model_len: 12288
+    max_num_batched_tokens: 2560
+    max_model_len: 2560
     temperature: 1.0
     top_p: 1.0
     top_k: -1
@@ -103,24 +104,24 @@ actor_rollout_ref:
 reward_model:
   reward_manager: dapo
   reward_kwargs:
-    max_resp_len: 12288  # 必须加这个，对应你 data.max_response_length
+    max_resp_len: 2560  # 必须加这个，对应你 data.max_response_length
     overlong_buffer_cfg: # 注意这里可能需要带上 _cfg 后缀，视 verl 版本而定
       enable: true
-      len: 4096
+      len: 512
       penalty_factor: 1.0
       log: true
 
 reward:
   custom_reward_function:
-    path: ${hydra:runtime.cwd}/scripts/config/verl_codegen1_reward.py
+    path: /data/wuli_error/WRX/QwenTraining/scripts/plugins/verl_codegen1_reward.py
     name: compute_score
     reward_kwargs:
       timeout_sec: 8
       memory_limit_mb: 1024
 
 trainer:
-  # logger: [console, wandb]
-  loggerr: [console]
+  # logger: ['console', 'wandb']
+  logger: ['console']
   project_name: DAPO
   experiment_name: DAPO-Qwen3.5-0.8B
   n_gpus_per_node: 1
