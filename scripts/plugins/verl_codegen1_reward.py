@@ -7,19 +7,53 @@ The reward is pass-rate over provided test cases.
 from __future__ import annotations
 
 import json
+from functools import lru_cache
 from typing import Any
 
 from data.code_excutor import ModelResponseCodeExecutor
 
 
-_EXECUTOR = None
-
-
+@lru_cache(maxsize=16)
 def _get_executor(timeout_sec: int, memory_limit_mb: int) -> ModelResponseCodeExecutor:
-    global _EXECUTOR
-    if _EXECUTOR is None:
-        _EXECUTOR = ModelResponseCodeExecutor(timeout=timeout_sec, memory_limit_mb=memory_limit_mb)
-    return _EXECUTOR
+    # One cached executor per (timeout, memory_limit_mb) tuple in each worker process.
+    return ModelResponseCodeExecutor(timeout=timeout_sec, memory_limit_mb=memory_limit_mb)
+
+
+def _normalize_io_keys_to_legacy(test_cases: Any) -> Any:
+    """Normalize top-level testcase keys to legacy input/output.
+
+    Supported external formats:
+    1) {"input": ..., "output": ...} (kept)
+    2) {"inputs": ..., "outputs": ...} (mapped)
+    3) [{"input"|"inputs": ..., "output"|"outputs": ...}, ...] (per-item mapped)
+    """
+
+    def _convert_case_dict(item: dict[str, Any]) -> dict[str, Any]:
+        converted = dict(item)
+
+        # Prefer explicit legacy keys when both exist.
+        if "input" not in converted and "inputs" in converted:
+            converted["input"] = converted["inputs"]
+        if "output" not in converted and "outputs" in converted:
+            converted["output"] = converted["outputs"]
+
+        converted.pop("inputs", None)
+        converted.pop("outputs", None)
+        return converted
+
+    if isinstance(test_cases, dict):
+        return _convert_case_dict(test_cases)
+
+    if isinstance(test_cases, list):
+        normalized = []
+        for item in test_cases:
+            if isinstance(item, dict):
+                normalized.append(_convert_case_dict(item))
+            else:
+                normalized.append(item)
+        return normalized
+
+    return test_cases
 
 
 def _parse_test_cases(ground_truth: Any) -> Any:
@@ -30,10 +64,11 @@ def _parse_test_cases(ground_truth: Any) -> Any:
         if not text:
             return None
         try:
-            return json.loads(text)
+            parsed = json.loads(text)
+            return _normalize_io_keys_to_legacy(parsed)
         except Exception:
             return None
-    return ground_truth
+    return _normalize_io_keys_to_legacy(ground_truth)
 
 
 def compute_score(
@@ -57,6 +92,8 @@ def compute_score(
     if extra_info:
         fn_mode = extra_info.get("fn_mode", "auto") or "auto"
 
+    timeout_sec = int(timeout_sec)
+    memory_limit_mb = int(memory_limit_mb)
     executor = _get_executor(timeout_sec=timeout_sec, memory_limit_mb=memory_limit_mb)
     try:
         results = executor.evaluate(model_response=solution_str, test_samples=test_cases, mode=fn_mode)
