@@ -44,7 +44,7 @@ VAL_FILE=${VAL_FILE:-${DATA_DIR}/val.parquet}
 OUTPUT_DIR=${OUTPUT_DIR:-/root/shared-nvme/output/verl_dapo_taco_verified_full}
 PROJECT_NAME=${PROJECT_NAME:-qwen_dapo_taco_verified}
 EXPERIMENT_NAME=${EXPERIMENT_NAME:-qwen35_08b_dapo_taco_full}
-LOGGER_BACKENDS=${LOGGER_BACKENDS:-["console","tensorboard"]}
+LOGGER_BACKENDS=${LOGGER_BACKENDS:-["console"]}
 TENSORBOARD_DIR=${TENSORBOARD_DIR:-${OUTPUT_DIR}/tensorboard/${EXPERIMENT_NAME}}
 
 # Single-GPU conservative defaults.
@@ -146,8 +146,8 @@ if [[ ! -f "${VAL_FILE}" ]]; then
   exit 1
 fi
 
-mkdir -p "${OUTPUT_DIR}" "${TENSORBOARD_DIR}"
-export TENSORBOARD_DIR
+# mkdir -p "${OUTPUT_DIR}" "${TENSORBOARD_DIR}"
+# export TENSORBOARD_DIR
 
 patch_vllm_qwen35_rope_bug
 
@@ -216,7 +216,7 @@ pushd "${VERL_DIR}" >/dev/null
   reward.reward_kwargs.overlong_buffer_cfg.penalty_factor=1.0 \
   reward.reward_kwargs.overlong_buffer_cfg.log=False \
   reward.reward_kwargs.max_resp_len=2000 \
-  reward.custom_reward_function.path="${PROJECT_DIR}/scripts/verl_codegen1_reward.py" \
+  reward.custom_reward_function.path="${PROJECT_DIR}/scripts/plugins/verl_codegen1_reward.py" \
   reward.custom_reward_function.name=compute_score \
   +reward.custom_reward_function.reward_kwargs.timeout_sec=4 \
   +reward.custom_reward_function.reward_kwargs.memory_limit_mb=1024 \
@@ -227,8 +227,8 @@ pushd "${VERL_DIR}" >/dev/null
   trainer.n_gpus_per_node=1 \
   trainer.nnodes=1 \
   trainer.val_before_train=False \
-  trainer.save_freq=10 \
-  trainer.test_freq=10 \
+  trainer.save_freq=1 \
+  trainer.test_freq=1 \
   trainer.total_epochs=1 \
   trainer.total_training_steps=20
 popd >/dev/null

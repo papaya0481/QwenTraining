@@ -8,8 +8,15 @@ from __future__ import annotations
 
 import json
 import math
+import sys
 import threading
+from pathlib import Path
 from typing import Any
+
+# Ensure project-root imports work when this file is loaded by Ray workers.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from data.code_excutor import ModelResponseCodeExecutor
 
