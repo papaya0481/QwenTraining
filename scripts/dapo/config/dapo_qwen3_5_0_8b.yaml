@@ -17,8 +17,8 @@ data:
   max_prompt_length: 4096
   max_response_length: 2560 # 8192 + buffer 2048
   filter_overlong_prompts: true
-  gen_batch_size: 16
-  train_batch_size: 4
+  gen_batch_size: 4
+  train_batch_size: 2
   shuffle: true
   seed: 42
   apply_chat_template_kwargs:
@@ -30,16 +30,16 @@ algorithm:
   kl_ctrl:
     kl_coef: 0.0
   filter_groups:
-    enable: true  # dapo
-    max_num_gen_batches: 10
+    enable: false  # dapo
+    max_num_gen_batches: 5
     metric: acc  # 参考 https://verl.readthedocs.io/en/latest/algo/dapo.html
 
 # lora_adapter_path: 加载lora 权重
 actor_rollout_ref:
   model:
     path: Qwen/Qwen3.5-0.8B
-    lora_adapter_path: /data/wuli_error/WRX/QwenTraining/output/v52-20260404-111420/checkpoint-1
-    use_remove_padding: true
+    # lora_adapter_path: /data/wuli_error/WRX/QwenTraining/output/v52-20260404-111420/checkpoint-1
+    use_remove_padding: false
     enable_gradient_checkpointing: true
     override_config:
       dtype: bfloat16 
@@ -62,31 +62,29 @@ actor_rollout_ref:
       lr_warmup_steps: 10
       weight_decay: 0.1
     fsdp_config:
-      param_offload: true
-      optimizer_offload: true
-      fsdp_size: -1
-      model_dtype: bfloat16
+      param_offload: false
+      optimizer_offload: false
 
   # 当use_kl_loss为false以及 use_kl_in_reward=false时，不开启
   ref:
-    log_prob_use_dynamic_bsz: true
+    log_prob_use_dynamic_bsz: ${actor_rollout_ref.actor.use_dynamic_bsz}
     log_prob_max_token_len_per_gpu: 16384
     ulysses_sequence_parallel_size: 1
     fsdp_config:
-      param_offload: true
+      param_offload: false
 
   rollout:
-    trace: # 添加查看val data的回答
-      backend: weave
-      token2text: true  # 能够查看生成的text
-      max_samples_per_step_per_worker: 3
+    # trace: # 添加查看val data的回答
+    #   backend: None
+    #   token2text: true  # 能够查看生成的text
+    #   max_samples_per_step_per_worker: 3
     name: vllm
     n: 16
     dtype: bfloat16
-    log_prob_use_dynamic_bsz: true
-    log_prob_micro_batch_size_per_gpu: 16
+    log_prob_use_dynamic_bsz: ${actor_rollout_ref.actor.use_dynamic_bsz}
+    log_prob_micro_batch_size_per_gpu: 1
     log_prob_max_token_len_per_gpu: 2560
-    gpu_memory_utilization: 0.5
+    gpu_memory_utilization: 0.4
     tensor_model_parallel_size: 1
     enable_chunked_prefill: true
     max_num_batched_tokens: 2560
@@ -131,4 +129,4 @@ trainer:
   save_freq: 5
   total_epochs: 1
   total_training_steps: 20
-  default_local_dir: verl_ckpts/${trainer.project_name}/${trainer.experiment_name}
+  default_local_dir: ./verl_ckpts/${trainer.project_name}/${trainer.experiment_name}

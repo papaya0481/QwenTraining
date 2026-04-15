@@ -11,3 +11,4 @@ wandb/
 
 rl_data/
 flash-attention/
+outputs/
