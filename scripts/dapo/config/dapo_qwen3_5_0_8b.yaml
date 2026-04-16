@@ -14,82 +14,94 @@ data:
   val_files: /data/wuli_error/WRX/QwenTraining/rl_data/test.parquet
   prompt_key: prompt
   truncation: error
-  max_prompt_length: 4096
-  max_response_length: 12288 # 8192 + buffer 4096
+  max_prompt_length: 5000
+  max_response_length: 2000
   filter_overlong_prompts: true
-  gen_batch_size: 12
-  train_batch_size: 4
-  shuffle: true
+  gen_batch_size: 4
+  train_batch_size: 2
+  shuffle: false
   seed: 42
   apply_chat_template_kwargs:
     enable_thinking: true # 设置开启think
 
 algorithm:
-  adv_estimator: grpo
+  adv_estimator: verpo
+  norm_adv_by_std_in_grpo: false
   use_kl_in_reward: false
   kl_ctrl:
     kl_coef: 0.0
+  verpo_turn_beta: 1.0
+  verpo_turn_norm_by_std: false
   filter_groups:
-    enable: true  # dapo
-    max_num_gen_batches: 10
+    enable: false
+    max_num_gen_batches: 8
     metric: acc  # 参考 https://verl.readthedocs.io/en/latest/algo/dapo.html
 
 # lora_adapter_path: 加载lora 权重
 actor_rollout_ref:
   model:
-    path: Qwen/Qwen3.5-0.8B
-    lora_adapter_path: /data/wuli_error/WRX/QwenTraining/output/v52-20260404-111420/checkpoint-1
+    path: ${oc.env:MODEL_PATH,Qwen/Qwen3.5-0.8B}
+    lora_rank: 64
+    lora_alpha: 128
+    target_modules: all-linear
+    lora_adapter_path: ${oc.env:SFT_ADAPTER_PATH, /data/wuli_error/WRX/QwenTraining/output/v52-20260404-111420/checkpoint-1}
+    # lora_adapter_path: /data/wuli_error/WRX/QwenTraining/output/v52-20260404-111420/checkpoint-1
     use_remove_padding: true
     enable_gradient_checkpointing: true
+    lora:
+      merge: false
     override_config:
-      dtype: bfloat16 
+      dtype: bfloat16
+      attn_implementation: flash_attention_2 # eager  / flash_attention_2
 
   actor:
+    strategy: fsdp2
     use_kl_loss: false
     kl_loss_coef: 0.0
     clip_ratio_low: 0.2
     clip_ratio_high: 0.28
-    clip_ratio_c: 10.0
-    use_dynamic_bsz: true
-    ppo_max_token_len_per_gpu: 12288
-    ppo_mini_batch_size: 32
+    ppo_mini_batch_size: 1
+    ppo_micro_batch_size_per_gpu: 1
     entropy_coeff: 0
-    grad_clip: 1.0
     loss_agg_mode: token-mean
-    ulysses_sequence_parallel_size: 1
+    kl_loss_type: low_var_kl
     optim:
-      lr: 1e-6
-      lr_warmup_steps: 10
-      weight_decay: 0.1
+      lr: 5e-7
     fsdp_config:
-      param_offload: true
-      optimizer_offload: true
+      param_offload: false
+      optimizer_offload: false
       fsdp_size: -1
       model_dtype: bfloat16
+    checkpoint:
+      save_contents: ['optimizer', 'extra'] # 节省空间
 
   # 当use_kl_loss为false以及 use_kl_in_reward=false时，不开启
   ref:
-    log_prob_use_dynamic_bsz: true
-    log_prob_max_token_len_per_gpu: 16384
-    ulysses_sequence_parallel_size: 1
+    model:
+      override_config:
+        attn_implementation: eager
+    log_prob_micro_batch_size_per_gpu: 1
     fsdp_config:
-      param_offload: true
+      param_offload: false
 
   rollout:
-    trace: # 添加查看val data的回答
-      backend: weave
-      token2text: true  # 能够查看生成的text
+    # trace: # 添加查看val data的回答
+    #   backend: None
+    #   token2text: true  # 能够查看生成的text
+    #   max_samples_per_step_per_worker: 3
     name: vllm
-    n: 16
-    dtype: bfloat16
-    log_prob_use_dynamic_bsz: true
-    log_prob_micro_batch_size_per_gpu: 16
-    log_prob_max_token_len_per_gpu: 12288
-    gpu_memory_utilization: 0.3
+    enforce_eager: false  # 切换eager和flash-attn
+    load_format: safetensors
+    layered_summon: true # https://verl.readthedocs.io/en/latest/advance/ppo_lora.html
+    agent:
+      num_workers: 1
+    n: 2
+    log_prob_micro_batch_size_per_gpu: 1
+    gpu_memory_utilization: 0.4
     tensor_model_parallel_size: 1
-    enable_chunked_prefill: true
-    max_num_batched_tokens: 12288
-    max_model_len: 12288
+    max_num_seqs: 64  # 
+    max_num_batched_tokens: 1024
+    max_model_len: 8192
     temperature: 1.0
     top_p: 1.0
     top_k: -1
@@ -100,34 +112,44 @@ actor_rollout_ref:
       do_sample: true
       n: 1
 
-reward_model:
-  reward_manager: dapo
-  reward_kwargs:
-    max_resp_len: 12288  # 必须加这个，对应你 data.max_response_length
-    overlong_buffer_cfg: # 注意这里可能需要带上 _cfg 后缀，视 verl 版本而定
-      enable: true
-      len: 4096
-      penalty_factor: 1.0
-      log: true
-
 reward:
+  reward_manager:
+    name: dapo
+  num_workers: 1
+  reward_kwargs:
+    max_resp_len: 2000
+    overlong_buffer_cfg:
+      enable: true
+      len: 1024
+      penalty_factor: 1.0
+      log: false
   custom_reward_function:
-    path: ${hydra:runtime.cwd}/scripts/config/verl_codegen1_reward.py
+    path: /data/wuli_error/WRX/QwenTraining/scripts/plugins/verl_codegen1_reward.py
     name: compute_score
     reward_kwargs:
-      timeout_sec: 8
+      timeout_sec: 4
       memory_limit_mb: 1024
+      difficulty_alpha: 2.0
+      stats_momentum: 0.9
+      default_pass_rate: 0.5
+      density_sigma_floor: 0.001
+      dense_reward_weight: 1.0
+      traj_reward_weight: 1.0
+      efficiency_gamma: 0.995
+      efficiency_mode: response_tokens
 
 trainer:
-  # logger: [console, wandb]
-  loggerr: [console]
+  # logger: ['console', 'wandb']
+  logger: ['console']
   project_name: DAPO
-  experiment_name: DAPO-Qwen3.5-0.8B
+  experiment_name: DAPO-Qwen3.5-0.8B_${oc.env:EXP_TIME_SUFFIX}
   n_gpus_per_node: 1
   nnodes: 1
-  val_before_train: true
-  test_freq: 5
-  save_freq: 5
+  val_before_train: false
+  save_dataloader_state: false # 关闭保存 data.pt
+  max_actor_ckpt_to_keep: 3
+  test_freq: 1
+  save_freq: 1
   total_epochs: 1
   total_training_steps: 20
-  default_local_dir: verl_ckpts/${trainer.project_name}/${trainer.experiment_name}
+  default_local_dir: ${oc.env:OUTPUT_DIR,./outputs/verl/${trainer.project_name}/${trainer.experiment_name}}
