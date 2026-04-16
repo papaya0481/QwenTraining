@@ -1,7 +1,16 @@
 #!/usr/bin/env python3
-"""Custom reward function for verl on codegen1.
+"""Custom reward function for VeRPO on codegen1.
 
-The reward is pass-rate over provided test cases.
+Key fix vs. original: rho_j (per-testcase pass rate) is computed from the
+current rollout GROUP, not from a global EMA.  The reward manager
+(VeRPORewardManager in verpo_reward_manager.py) collects all N trajectories
+for a prompt, calls compute_score_single to get raw execution results, then
+calls compute_group_dense_reward to compute the group-level rho_j / w_j / w_j'
+and the final R^turn = sum_j w_j' * p_j  (weighted sum, not normalised avg).
+
+compute_score is kept as the single-sample entry-point used by DAPORewardManager
+for backward compatibility (e.g. validation), but it now falls back to a
+per-sample EMA only when called outside a group context.
 """
 
 from __future__ import annotations
@@ -14,7 +23,6 @@ from pathlib import Path
 from functools import lru_cache
 from typing import Any
 
-# Ensure project-root imports work when this file is loaded by Ray workers.
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -22,53 +30,42 @@ if str(PROJECT_ROOT) not in sys.path:
 from data.code_excutor import ModelResponseCodeExecutor
 
 
-_EXECUTOR = None
 _TEST_STAT_LOCK = threading.Lock()
-# Global online statistics for testcase pass-rate estimation.
+# Fallback global EMA stats (used only when called outside a group context).
 # key -> {"ema_pass_rate": float, "seen": int}
 _TESTCASE_STATS: dict[str, dict[str, float | int]] = {}
 
 
+# ---------------------------------------------------------------------------
+# Executor
+# ---------------------------------------------------------------------------
+
 @lru_cache(maxsize=16)
 def _get_executor(timeout_sec: int, memory_limit_mb: int) -> ModelResponseCodeExecutor:
-    # One cached executor per (timeout, memory_limit_mb) tuple in each worker process.
     return ModelResponseCodeExecutor(timeout=timeout_sec, memory_limit_mb=memory_limit_mb)
 
 
+# ---------------------------------------------------------------------------
+# Test-case key helpers
+# ---------------------------------------------------------------------------
+
 def _normalize_io_keys_to_legacy(test_cases: Any) -> Any:
-    """Normalize top-level testcase keys to legacy input/output.
-
-    Supported external formats:
-    1) {"input": ..., "output": ...} (kept)
-    2) {"inputs": ..., "outputs": ...} (mapped)
-    3) [{"input"|"inputs": ..., "output"|"outputs": ...}, ...] (per-item mapped)
-    """
-
-    def _convert_case_dict(item: dict[str, Any]) -> dict[str, Any]:
-        converted = dict(item)
-
-        # Prefer explicit legacy keys when both exist.
-        if "input" not in converted and "inputs" in converted:
-            converted["input"] = converted["inputs"]
-        if "output" not in converted and "outputs" in converted:
-            converted["output"] = converted["outputs"]
-
-        converted.pop("inputs", None)
-        converted.pop("outputs", None)
-        return converted
+    def _convert(item: dict) -> dict:
+        c = dict(item)
+        if "input" not in c and "inputs" in c:
+            c["input"] = c.pop("inputs")
+        else:
+            c.pop("inputs", None)
+        if "output" not in c and "outputs" in c:
+            c["output"] = c.pop("outputs")
+        else:
+            c.pop("outputs", None)
+        return c
 
     if isinstance(test_cases, dict):
-        return _convert_case_dict(test_cases)
-
+        return _convert(test_cases)
     if isinstance(test_cases, list):
-        normalized = []
-        for item in test_cases:
-            if isinstance(item, dict):
-                normalized.append(_convert_case_dict(item))
-            else:
-                normalized.append(item)
-        return normalized
-
+        return [_convert(i) if isinstance(i, dict) else i for i in test_cases]
     return test_cases
 
 
@@ -80,8 +77,7 @@ def _parse_test_cases(ground_truth: Any) -> Any:
         if not text:
             return None
         try:
-            parsed = json.loads(text)
-            return _normalize_io_keys_to_legacy(parsed)
+            return _normalize_io_keys_to_legacy(json.loads(text))
         except Exception:
             return None
     return _normalize_io_keys_to_legacy(ground_truth)
@@ -97,149 +93,171 @@ def _safe_float(value: Any, default: float) -> float:
 def _get_testcase_keys(extra_info: dict[str, Any] | None, total: int) -> list[str]:
     if not extra_info:
         return [f"tc_{i}" for i in range(total)]
-
     test_hash = extra_info.get("test_hash")
     if isinstance(test_hash, list) and len(test_hash) == total:
         return [str(x) for x in test_hash]
-
     index = extra_info.get("index", "na")
     return [f"{index}_tc_{i}" for i in range(total)]
 
 
-def _estimate_pass_rates_before_update(keys: list[str], default_pass_rate: float) -> list[float]:
+# ---------------------------------------------------------------------------
+# Fallback EMA stats (single-sample path only)
+# ---------------------------------------------------------------------------
+
+def _ema_estimate_pass_rates(keys: list[str], default_pass_rate: float) -> list[float]:
     rates: list[float] = []
     with _TEST_STAT_LOCK:
         for key in keys:
             stat = _TESTCASE_STATS.get(key)
-            if stat is None:
-                rates.append(default_pass_rate)
-            else:
-                rates.append(_safe_float(stat.get("ema_pass_rate"), default_pass_rate))
+            rates.append(_safe_float(stat.get("ema_pass_rate"), default_pass_rate) if stat else default_pass_rate)
     return rates
 
 
-def _update_testcase_stats(keys: list[str], passed_flags: list[float], momentum: float) -> None:
+def _ema_update_stats(keys: list[str], passed_flags: list[float], momentum: float) -> None:
     with _TEST_STAT_LOCK:
         for key, passed in zip(keys, passed_flags):
             stat = _TESTCASE_STATS.get(key)
             if stat is None:
                 _TESTCASE_STATS[key] = {"ema_pass_rate": passed, "seen": 1}
-                continue
+            else:
+                old = _safe_float(stat.get("ema_pass_rate"), passed)
+                _TESTCASE_STATS[key] = {
+                    "ema_pass_rate": momentum * old + (1.0 - momentum) * passed,
+                    "seen": int(stat.get("seen", 0)) + 1,
+                }
 
-            old_rate = _safe_float(stat.get("ema_pass_rate"), passed)
-            seen = int(stat.get("seen", 0))
-            new_rate = momentum * old_rate + (1.0 - momentum) * passed
-            _TESTCASE_STATS[key] = {"ema_pass_rate": new_rate, "seen": seen + 1}
 
+# ---------------------------------------------------------------------------
+# Core dense-reward computation (paper Section 3)
+# ---------------------------------------------------------------------------
 
-def _compute_dynamic_dense_reward(
-    pass_rates: list[float],
-    passed_flags: list[float],
+def compute_group_dense_reward(
+    group_passed_flags: list[list[float]],  # shape [N_samples][N_tests]
+    query_passed_flags: list[float],        # shape [N_tests] — the sample being scored
     difficulty_alpha: float,
     density_eps: float,
     sigma_floor: float,
 ) -> tuple[float, float, float]:
-    if not pass_rates:
+    """Compute R^turn for one sample using group-level rho_j.
+
+    Paper eq. (1):  rho_j = (sum over all turns/trajectories of p_{t,i}^{(j)})
+                             / (total number of turns across group)
+    For single-turn: each trajectory has 1 turn, so denominator = N.
+
+    Paper eq. (4):  R^turn = sum_j  w_j' * p_j   (weighted SUM, not avg)
+    """
+    if not group_passed_flags or not query_passed_flags:
         return 0.0, 0.0, sigma_floor
 
-    base_weights = [math.exp(-difficulty_alpha * rho) for rho in pass_rates]
+    n_tests = len(query_passed_flags)
+    n_samples = len(group_passed_flags)
 
-    mean_rho = sum(pass_rates) / len(pass_rates)
-    var_rho = sum((rho - mean_rho) ** 2 for rho in pass_rates) / len(pass_rates)
+    # rho_j: group-level pass rate for each test case (eq. 1)
+    rho = []
+    for j in range(n_tests):
+        total_pass = sum(group_passed_flags[i][j] for i in range(n_samples))
+        rho.append(total_pass / n_samples)
+
+    # w_j = exp(-alpha * rho_j)  (eq. 2)
+    base_weights = [math.exp(-difficulty_alpha * r) for r in rho]
+
+    # sigma for KDE bandwidth
+    mean_rho = sum(rho) / len(rho)
+    var_rho = sum((r - mean_rho) ** 2 for r in rho) / len(rho)
     sigma = max(math.sqrt(var_rho) / 2.0, sigma_floor)
 
+    # w_j' = w_j / (rho_hat_j + eps)  (eq. 3)
     normalized_weights: list[float] = []
-    for rho_j, w_j in zip(pass_rates, base_weights):
-        density = 0.0
-        for rho_k in pass_rates:
-            density += math.exp(-((rho_j - rho_k) ** 2) / (2.0 * sigma * sigma + density_eps))
+    for j, (r_j, w_j) in enumerate(zip(rho, base_weights)):
+        density = sum(
+            math.exp(-((r_j - r_k) ** 2) / (2.0 * sigma * sigma + density_eps))
+            for r_k in rho
+        )
         normalized_weights.append(w_j / (density + density_eps))
 
-    weight_sum = sum(normalized_weights)
-    if weight_sum <= 0:
-        return 0.0, 0.0, sigma
-
-    weighted_pass = sum(w * p for w, p in zip(normalized_weights, passed_flags)) / weight_sum
+    # R^turn = sum_j w_j' * p_j  (eq. 4 — weighted SUM, not normalised avg)
+    r_turn = sum(w * p for w, p in zip(normalized_weights, query_passed_flags))
     avg_weight = sum(base_weights) / len(base_weights)
-    return weighted_pass, avg_weight, sigma
+    return r_turn, avg_weight, sigma
 
 
-def _safe_float(value: Any, default: float) -> float:
+# ---------------------------------------------------------------------------
+# Single-sample execution (returns raw results for group aggregation)
+# ---------------------------------------------------------------------------
+
+def execute_single(
+    solution_str: str,
+    ground_truth: Any,
+    extra_info: dict[str, Any] | None,
+    timeout_sec: int,
+    memory_limit_mb: int,
+) -> dict[str, Any] | None:
+    """Run the code executor and return raw per-testcase results.
+
+    Returns None on parse/execution failure.
+    Returns dict with keys:
+        passed_flags: list[float]  (1.0 / 0.0 per test)
+        passed: int
+        total: int
+        pass_rate: float
+        testcase_keys: list[str]
+        outcome_reward: float  (1.0 if all pass, else 0.0)
+        turn_count: int
+    """
+    test_cases = _parse_test_cases(ground_truth)
+    if test_cases is None:
+        return None
+
+    fn_mode = "auto"
+    if extra_info:
+        fn_mode = extra_info.get("fn_mode", "auto") or "auto"
+
+    executor = _get_executor(timeout_sec=int(timeout_sec), memory_limit_mb=int(memory_limit_mb))
     try:
-        return float(value)
+        results = executor.evaluate(model_response=solution_str, test_samples=test_cases, mode=fn_mode)
     except Exception:
-        return default
+        return None
+
+    if not results:
+        return None
+
+    passed_flags = [1.0 if item.get("passed", False) else 0.0 for item in results]
+    passed = int(sum(passed_flags))
+    total = len(results)
+    testcase_keys = _get_testcase_keys(extra_info, total)
+
+    turn_count = 1
+    if extra_info is not None:
+        turn_count = int(extra_info.get("turn_count", 1))
+
+    return {
+        "passed_flags": passed_flags,
+        "passed": passed,
+        "total": total,
+        "pass_rate": float(passed) / float(total),
+        "testcase_keys": testcase_keys,
+        "outcome_reward": 1.0 if passed == total else 0.0,
+        "turn_count": turn_count,
+    }
 
 
-def _get_testcase_keys(extra_info: dict[str, Any] | None, total: int) -> list[str]:
-    if not extra_info:
-        return [f"tc_{i}" for i in range(total)]
-
-    test_hash = extra_info.get("test_hash")
-    if isinstance(test_hash, list) and len(test_hash) == total:
-        return [str(x) for x in test_hash]
-
-    index = extra_info.get("index", "na")
-    return [f"{index}_tc_{i}" for i in range(total)]
-
-
-def _estimate_pass_rates_before_update(keys: list[str], default_pass_rate: float) -> list[float]:
-    rates: list[float] = []
-    with _TEST_STAT_LOCK:
-        for key in keys:
-            stat = _TESTCASE_STATS.get(key)
-            if stat is None:
-                rates.append(default_pass_rate)
-            else:
-                rates.append(_safe_float(stat.get("ema_pass_rate"), default_pass_rate))
-    return rates
+def _empty_result() -> dict[str, float | int | bool]:
+    return {
+        "score": 0.0,
+        "acc": 0.0,
+        "passed": 0,
+        "total": 0,
+        "pass_rate": 0.0,
+        "dense_reward": 0.0,
+        "traj_reward": 0.0,
+        "efficiency_decay": 1.0,
+    }
 
 
-def _update_testcase_stats(keys: list[str], passed_flags: list[float], momentum: float) -> None:
-    with _TEST_STAT_LOCK:
-        for key, passed in zip(keys, passed_flags):
-            stat = _TESTCASE_STATS.get(key)
-            if stat is None:
-                _TESTCASE_STATS[key] = {"ema_pass_rate": passed, "seen": 1}
-                continue
-
-            old_rate = _safe_float(stat.get("ema_pass_rate"), passed)
-            seen = int(stat.get("seen", 0))
-            new_rate = momentum * old_rate + (1.0 - momentum) * passed
-            _TESTCASE_STATS[key] = {"ema_pass_rate": new_rate, "seen": seen + 1}
-
-
-def _compute_dynamic_dense_reward(
-    pass_rates: list[float],
-    passed_flags: list[float],
-    difficulty_alpha: float,
-    density_eps: float,
-    sigma_floor: float,
-) -> tuple[float, float, float]:
-    if not pass_rates:
-        return 0.0, 0.0, sigma_floor
-
-    base_weights = [math.exp(-difficulty_alpha * rho) for rho in pass_rates]
-
-    mean_rho = sum(pass_rates) / len(pass_rates)
-    var_rho = sum((rho - mean_rho) ** 2 for rho in pass_rates) / len(pass_rates)
-    sigma = max(math.sqrt(var_rho) / 2.0, sigma_floor)
-
-    normalized_weights: list[float] = []
-    for rho_j, w_j in zip(pass_rates, base_weights):
-        density = 0.0
-        for rho_k in pass_rates:
-            density += math.exp(-((rho_j - rho_k) ** 2) / (2.0 * sigma * sigma + density_eps))
-        normalized_weights.append(w_j / (density + density_eps))
-
-    weight_sum = sum(normalized_weights)
-    if weight_sum <= 0:
-        return 0.0, 0.0, sigma
-
-    weighted_pass = sum(w * p for w, p in zip(normalized_weights, passed_flags)) / weight_sum
-    avg_weight = sum(base_weights) / len(base_weights)
-    return weighted_pass, avg_weight, sigma
-
+# ---------------------------------------------------------------------------
+# compute_score: single-sample entry-point (fallback / validation path)
+# Uses EMA-based rho_j when no group context is available.
+# ---------------------------------------------------------------------------
 
 def compute_score(
     data_source: str,
@@ -256,111 +274,56 @@ def compute_score(
     dense_reward_weight: float = 1.0,
     traj_reward_weight: float = 1.0,
     efficiency_gamma: float = 0.995,
-    efficiency_mode: str = "response_tokens",
+    efficiency_mode: str = "turn_count",
     **kwargs,
 ) -> dict[str, float | int | bool]:
-    # data_source is kept for interface compatibility with verl.
-    del data_source
-    del kwargs
+    del data_source, kwargs
 
-    test_cases = _parse_test_cases(ground_truth)
-    if test_cases is None:
-        return {
-            "score": 0.0,
-            "acc": 0.0,
-            "passed": 0,
-            "total": 0,
-            "pass_rate": 0.0,
-            "dense_reward": 0.0,
-            "traj_reward": 0.0,
-            "efficiency_decay": 1.0,
-        }
+    raw = execute_single(solution_str, ground_truth, extra_info, timeout_sec, memory_limit_mb)
+    if raw is None:
+        return _empty_result()
 
-    fn_mode = "auto"
-    if extra_info:
-        fn_mode = extra_info.get("fn_mode", "auto") or "auto"
+    passed_flags = raw["passed_flags"]
+    testcase_keys = raw["testcase_keys"]
 
-    timeout_sec = int(timeout_sec)
-    memory_limit_mb = int(memory_limit_mb)
-    executor = _get_executor(timeout_sec=timeout_sec, memory_limit_mb=memory_limit_mb)
-    try:
-        results = executor.evaluate(model_response=solution_str, test_samples=test_cases, mode=fn_mode)
-    except Exception:
-        return {
-            "score": 0.0,
-            "acc": 0.0,
-            "passed": 0,
-            "total": 0,
-            "pass_rate": 0.0,
-            "dense_reward": 0.0,
-            "traj_reward": 0.0,
-            "efficiency_decay": 1.0,
-        }
+    # EMA-based rho_j (fallback — not group-level)
+    pass_rates = _ema_estimate_pass_rates(testcase_keys, default_pass_rate)
 
-    if not results:
-        return {
-            "score": 0.0,
-            "acc": 0.0,
-            "passed": 0,
-            "total": 0,
-            "pass_rate": 0.0,
-            "dense_reward": 0.0,
-            "traj_reward": 0.0,
-            "efficiency_decay": 1.0,
-        }
-
-    passed = sum(1 for item in results if item.get("passed", False))
-    total = len(results)
-    pass_rate = float(passed) / float(total)
-
-    passed_flags = [1.0 if item.get("passed", False) else 0.0 for item in results]
-    testcase_keys = _get_testcase_keys(extra_info=extra_info, total=total)
-    pass_rates = _estimate_pass_rates_before_update(testcase_keys, default_pass_rate=default_pass_rate)
-
-    dense_reward, avg_difficulty_weight, density_sigma = _compute_dynamic_dense_reward(
-        pass_rates=pass_rates,
-        passed_flags=passed_flags,
+    # Use single-sample as its own "group" of size 1 for the dense reward formula
+    dense_reward, avg_difficulty_weight, density_sigma = compute_group_dense_reward(
+        group_passed_flags=[passed_flags],
+        query_passed_flags=passed_flags,
         difficulty_alpha=difficulty_alpha,
         density_eps=density_eps,
         sigma_floor=density_sigma_floor,
     )
 
-    # Update online statistics after current sample is scored.
-    _update_testcase_stats(testcase_keys, passed_flags, momentum=stats_momentum)
+    _ema_update_stats(testcase_keys, passed_flags, momentum=stats_momentum)
 
-    # Trajectory-level outcome anchor (single-turn setup).
-    outcome_reward = 1.0 if passed == total else 0.0
-
-    # Efficiency decay: in single-turn training, use response length as trajectory proxy.
+    # Efficiency decay
     efficiency_decay = 1.0
-    if efficiency_mode == "response_tokens":
+    if efficiency_mode == "turn_count":
+        turn_count = raw["turn_count"]
+        efficiency_decay = efficiency_gamma ** max(turn_count, 1)
+    elif efficiency_mode == "response_tokens":
         response_tokens = max(len(solution_str.split()), 1)
         efficiency_decay = efficiency_gamma ** max(response_tokens - 1, 0)
-    elif efficiency_mode == "turn_count":
-        turn_count = 1
-        if extra_info is not None:
-            turn_count = int(extra_info.get("turn_count", 1))
-        efficiency_decay = efficiency_gamma ** max(turn_count, 1)
 
-    traj_reward = outcome_reward * efficiency_decay
+    traj_reward = raw["outcome_reward"] * efficiency_decay
 
-    # Keep reward channels separated for VeRPO:
-    # - score: trajectory anchor used by default reward tensor path
-    # - dense_reward / traj_reward: consumed by verpo advantage estimator separately
-    # We still expose a preview mixed score for diagnostics only.
     mix_denom = max(dense_reward_weight + traj_reward_weight, 1e-8)
     mixed_reward_preview = (dense_reward_weight * dense_reward + traj_reward_weight * traj_reward) / mix_denom
 
     return {
         "score": traj_reward,
-        "acc": pass_rate,
-        "passed": passed,
-        "total": total,
-        "pass_rate": pass_rate,
+        "acc": raw["pass_rate"],
+        "passed": raw["passed"],
+        "total": raw["total"],
+        "pass_rate": raw["pass_rate"],
         "dense_reward": dense_reward,
         "traj_reward": traj_reward,
         "mixed_reward_preview": mixed_reward_preview,
-        "outcome_reward": outcome_reward,
+        "outcome_reward": raw["outcome_reward"],
         "efficiency_decay": efficiency_decay,
         "avg_difficulty_weight": avg_difficulty_weight,
         "density_sigma": density_sigma,
