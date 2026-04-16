@@ -25,8 +25,8 @@ def make_map_fn(split):
             tc_payload = json.loads(raw_tc)
             inputs  = tc_payload.get("input",  tc_payload.get("inputs",  []))
             outputs = tc_payload.get("output", tc_payload.get("outputs", []))
-            # Normalize to {"inputs": [...], "outputs": [...]}
-            normalized_payload = {"inputs": inputs, "outputs": outputs}
+            # Normalize to {"input": [...], "output": [...]}
+            normalized_payload = {"input": inputs, "output": outputs}
             normalized_tc = json.dumps(normalized_payload, ensure_ascii=False)
             n = max(len(inputs), len(outputs))
             test_hash = [
