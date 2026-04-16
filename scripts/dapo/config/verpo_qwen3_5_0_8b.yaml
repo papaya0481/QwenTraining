@@ -25,13 +25,11 @@ data:
     enable_thinking: true # 设置开启think
 
 algorithm:
-  adv_estimator: verpo
+  adv_estimator: grpo
   norm_adv_by_std_in_grpo: false
   use_kl_in_reward: false
   kl_ctrl:
     kl_coef: 0.0
-  verpo_turn_beta: 1.0
-  verpo_turn_norm_by_std: false
   filter_groups:
     enable: false
     max_num_gen_batches: 8
@@ -90,7 +88,7 @@ actor_rollout_ref:
     #   token2text: true  # 能够查看生成的text
     #   max_samples_per_step_per_worker: 3
     name: vllm
-    enforce_eager: false  # 切换eager和flash-attn
+    enforce_eager: false
     load_format: safetensors
     layered_summon: true # https://verl.readthedocs.io/en/latest/advance/ppo_lora.html
     agent:
@@ -99,7 +97,7 @@ actor_rollout_ref:
     log_prob_micro_batch_size_per_gpu: 1
     gpu_memory_utilization: 0.4
     tensor_model_parallel_size: 1
-    max_num_seqs: 64  # 
+    max_num_seqs: 64
     max_num_batched_tokens: 1024
     max_model_len: 8192
     temperature: 1.0
@@ -129,14 +127,6 @@ reward:
     reward_kwargs:
       timeout_sec: 4
       memory_limit_mb: 1024
-      difficulty_alpha: 2.0
-      stats_momentum: 0.9
-      default_pass_rate: 0.5
-      density_sigma_floor: 0.001
-      dense_reward_weight: 1.0
-      traj_reward_weight: 1.0
-      efficiency_gamma: 0.995
-      efficiency_mode: response_tokens
 
 trainer:
   # logger: ['console', 'wandb']
