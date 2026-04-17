@@ -50,6 +50,7 @@ actor_rollout_ref:
     enable_gradient_checkpointing: true
     lora:
       merge: false
+      freeze_vision_model: true
     override_config:
       dtype: bfloat16
       attn_implementation: flash_attention_2 # eager  / flash_attention_2
