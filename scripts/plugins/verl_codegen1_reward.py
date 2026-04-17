@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Custom reward function for VeRPO on codegen1.
 
 Key fix vs. original: rho_j (per-testcase pass rate) is computed from the
