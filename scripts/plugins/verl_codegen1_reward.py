@@ -16,12 +16,13 @@ per-sample EMA only when called outside a group context.
 from __future__ import annotations
 
 import json
-import math
 import sys
 import threading
 from pathlib import Path
 from functools import lru_cache
 from typing import Any
+
+import numpy as np
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -149,35 +150,26 @@ def compute_group_dense_reward(
     if not group_passed_flags or not query_passed_flags:
         return 0.0, 0.0, sigma_floor
 
-    n_tests = len(query_passed_flags)
-    n_samples = len(group_passed_flags)
-
-    # rho_j: group-level pass rate for each test case (eq. 1)
-    rho = []
-    for j in range(n_tests):
-        total_pass = sum(group_passed_flags[i][j] for i in range(n_samples))
-        rho.append(total_pass / n_samples)
+    # rho_j: group-level pass rate per test case (eq. 1)  shape: [N_tests]
+    group_arr = np.array(group_passed_flags, dtype=np.float64)  # [N_samples, N_tests]
+    rho = group_arr.mean(axis=0)                                 # [N_tests]
 
     # w_j = exp(-alpha * rho_j)  (eq. 2)
-    base_weights = [math.exp(-difficulty_alpha * r) for r in rho]
+    base_weights = np.exp(-difficulty_alpha * rho)               # [N_tests]
 
-    # sigma for KDE bandwidth
-    mean_rho = sum(rho) / len(rho)
-    var_rho = sum((r - mean_rho) ** 2 for r in rho) / len(rho)
-    sigma = max(math.sqrt(var_rho) / 2.0, sigma_floor)
+    # KDE bandwidth sigma
+    sigma = float(max(rho.std() / 2.0, sigma_floor))
 
-    # w_j' = w_j / (rho_hat_j + eps)  (eq. 3)
-    normalized_weights: list[float] = []
-    for j, (r_j, w_j) in enumerate(zip(rho, base_weights)):
-        density = sum(
-            math.exp(-((r_j - r_k) ** 2) / (2.0 * sigma * sigma + density_eps))
-            for r_k in rho
-        )
-        normalized_weights.append(w_j / (density + density_eps))
+    # w_j' = w_j / (density_j + eps)  (eq. 3)
+    # density_j = sum_k exp(-(rho_j - rho_k)^2 / (2*sigma^2 + eps))
+    diff = rho[:, None] - rho[None, :]                           # [N_tests, N_tests]
+    density = np.exp(-(diff ** 2) / (2.0 * sigma * sigma + density_eps)).sum(axis=1)
+    normalized_weights = base_weights / (density + density_eps)  # [N_tests]
 
     # R^turn = sum_j w_j' * p_j  (eq. 4 — weighted SUM, not normalised avg)
-    r_turn = sum(w * p for w, p in zip(normalized_weights, query_passed_flags))
-    avg_weight = sum(base_weights) / len(base_weights)
+    query_arr = np.asarray(query_passed_flags, dtype=np.float64)
+    r_turn = float(np.dot(normalized_weights, query_arr))
+    avg_weight = float(base_weights.mean())
     return r_turn, avg_weight, sigma
 
 

@@ -34,10 +34,7 @@ from verl import DataProto
 from verl.workers.reward_manager import register
 from verl.workers.reward_manager.abstract import AbstractRewardManager
 
-from scripts.plugins.verl_codegen1_reward import (
-    compute_group_dense_reward,
-    execute_single,
-)
+from scripts.plugins.verl_codegen1_reward import execute_single
 
 
 def _default_reward_kwargs() -> dict[str, Any]:
@@ -170,12 +167,23 @@ class VeRPORewardManager(AbstractRewardManager):
         already_print: dict[str, int] = {}
 
         for uid, indices in uid_to_indices.items():
-            # Collect passed_flags for all valid samples in this group
-            group_flags: list[list[float]] = []
-            for i in indices:
-                raw = raw_results[i]
-                if raw is not None:
-                    group_flags.append(raw["passed_flags"])
+            valid_indices = [i for i in indices if raw_results[i] is not None]
+            group_flags = [raw_results[i]["passed_flags"] for i in valid_indices]
+
+            # Vectorize group-level weights once per group
+            if group_flags:
+                group_arr = np.array(group_flags, dtype=np.float64)      # [N, M]
+                rho = group_arr.mean(axis=0)                              # [M]
+                base_w = np.exp(-rk["difficulty_alpha"] * rho)            # [M]
+                sigma_val = float(max(rho.std() / 2.0, rk["density_sigma_floor"]))
+                diff = rho[:, None] - rho[None, :]                        # [M, M]
+                density = np.exp(
+                    -(diff ** 2) / (2.0 * sigma_val * sigma_val + rk["density_eps"])
+                ).sum(axis=1)
+                norm_w = base_w / (density + rk["density_eps"])           # [M]
+                avg_w_group = float(base_w.mean())
+            else:
+                norm_w = avg_w_group = sigma_val = None
 
             for i in indices:
                 raw = raw_results[i]
@@ -183,19 +191,15 @@ class VeRPORewardManager(AbstractRewardManager):
                 data_source = data[i].non_tensor_batch[self.reward_fn_key]
 
                 if raw is None:
-                    # execution failed — reward stays 0
                     reward_tensor[i, max(valid_resp_len - 1, 0)] = 0.0
                     continue
 
-                # Dense reward: use group-level flags if we have them, else self
-                g_flags = group_flags if group_flags else [raw["passed_flags"]]
-                dense_reward, avg_w, sigma = compute_group_dense_reward(
-                    group_passed_flags=g_flags,
-                    query_passed_flags=raw["passed_flags"],
-                    difficulty_alpha=rk["difficulty_alpha"],
-                    density_eps=rk["density_eps"],
-                    sigma_floor=rk["density_sigma_floor"],
-                )
+                if norm_w is not None:
+                    q = np.asarray(raw["passed_flags"], dtype=np.float64)
+                    dense_reward = float(np.dot(norm_w, q))
+                    avg_w, sigma = avg_w_group, sigma_val
+                else:
+                    dense_reward, avg_w, sigma = 0.0, 0.0, rk["density_sigma_floor"]
 
                 # Efficiency decay — paper uses turn count (|tau|)
                 efficiency_decay = 1.0
