@@ -44,7 +44,7 @@ actor_rollout_ref:
     lora_rank: 64
     lora_alpha: 128
     target_modules: all-linear
-    lora_adapter_path: ${oc.env:SFT_ADAPTER_PATH, /data/wuli_error/WRX/QwenTraining/output/v52-20260404-111420/checkpoint-1}
+    lora_adapter_path: /data/wuli_error/WRX/QwenTraining/output/v52-20260404-111420/checkpoint-1
     # lora_adapter_path: /data/wuli_error/WRX/QwenTraining/output/v52-20260404-111420/checkpoint-1
     use_remove_padding: true
     enable_gradient_checkpointing: true
@@ -123,13 +123,12 @@ reward:
       len: 1024
       penalty_factor: 1.0
       log: false
-    reward_kwargs:
-      timeout_sec: 4
-      memory_limit_mb: 1024
-      difficulty_alpha: 2.0
-      density_sigma_floor: 0.001
-      efficiency_gamma: 0.995
-      efficiency_mode: turn_count  # paper eq.5: decay by |tau| (turn count)
+    timeout_sec: 4
+    memory_limit_mb: 1024
+    difficulty_alpha: 2.0
+    density_sigma_floor: 0.001
+    efficiency_gamma: 0.995
+    efficiency_mode: turn_count  # paper eq.5: decay by |tau| (turn count)
     num_workers: 4
   custom_reward_function:
     path: /data/wuli_error/WRX/QwenTraining/scripts/plugins/verl_codegen1_reward.py
