@@ -15,7 +15,7 @@ data:
   prompt_key: prompt
   truncation: error
   max_prompt_length: 5000
-  max_response_length: 2000
+  max_response_length: 10240 # 最大生成长度，8192+2048 = 10240
   filter_overlong_prompts: true
   gen_batch_size: 4
   train_batch_size: 2
@@ -67,7 +67,7 @@ actor_rollout_ref:
     loss_agg_mode: token-mean
     kl_loss_type: low_var_kl
     optim:
-      lr: 5e-7
+      lr: 1e-6
     fsdp_config:
       param_offload: false
       optimizer_offload: false
@@ -96,13 +96,13 @@ actor_rollout_ref:
     layered_summon: true # https://verl.readthedocs.io/en/latest/advance/ppo_lora.html
     agent:
       num_workers: 1
-    n: 2
+    n: 8 # Group中的数量
     log_prob_micro_batch_size_per_gpu: 1
     gpu_memory_utilization: 0.4
     tensor_model_parallel_size: 1
-    max_num_seqs: 64  # 
-    max_num_batched_tokens: 1024
-    max_model_len: 8192
+    max_num_seqs: 64  # 并行序列数，限制在一定范围内以避免显存不足
+    max_num_batched_tokens: 8192 # 单词推理最大长度
+    max_model_len: 16384 # prompt+response最大长度，超过这个长度会被丢弃
     temperature: 1.0
     top_p: 1.0
     top_k: -1
@@ -118,10 +118,10 @@ reward:
     name: verpo
   num_workers: 1
   reward_kwargs:
-    max_resp_len: 2000
+    max_resp_len: 10240
     overlong_buffer_cfg:
       enable: true
-      len: 1024
+      len: 2048
       penalty_factor: 1.0
       log: false
     timeout_sec: 4
