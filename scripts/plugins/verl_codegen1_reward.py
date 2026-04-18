@@ -306,16 +306,16 @@ def compute_score(
     mixed_reward_preview = (dense_reward_weight * dense_reward + traj_reward_weight * traj_reward) / mix_denom
 
     return {
-        "score": traj_reward,
-        "acc": raw["pass_rate"],
-        "passed": raw["passed"],
-        "total": raw["total"],
-        "pass_rate": raw["pass_rate"],
-        "dense_reward": dense_reward,
-        "traj_reward": traj_reward,
-        "mixed_reward_preview": mixed_reward_preview,
-        "outcome_reward": raw["outcome_reward"],
-        "efficiency_decay": efficiency_decay,
-        "avg_difficulty_weight": avg_difficulty_weight,
-        "density_sigma": density_sigma,
+        "score": traj_reward,  # Final reward used by training in this path.
+        "acc": raw["pass_rate"],  # Fraction of test cases passed by this completion, in [0, 1].
+        "passed": raw["passed"],  # Count of passed test cases.
+        "total": raw["total"],  # Count of all evaluated test cases.
+        "pass_rate": raw["pass_rate"],  # Same value as acc: passed / total.
+        "dense_reward": dense_reward,  # Dense shaping reward from per-test-case outcomes and difficulty weights.
+        "traj_reward": traj_reward,  # Outcome reward after applying the efficiency penalty.
+        "mixed_reward_preview": mixed_reward_preview,  # Debug-only preview of the weighted mix of dense_reward and traj_reward.
+        "outcome_reward": raw["outcome_reward"],  # Raw task outcome before efficiency penalty: 1.0 if all tests pass, else 0.0.
+        "efficiency_decay": efficiency_decay,  # Multiplier that penalizes inefficient trajectories, e.g. too many turns or tokens.
+        "avg_difficulty_weight": avg_difficulty_weight,  # Average testcase weight used when computing dense_reward.
+        "density_sigma": density_sigma,  # Spread term from the dense reward formula, kept for debugging/analysis.
     }
