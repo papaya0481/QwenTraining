@@ -10,8 +10,8 @@ defaults:
   - _self_
 
 data:
-  train_files: /data/wuli_error/WRX/QwenTraining/rl_data/train.parquet
-  val_files: /data/wuli_error/WRX/QwenTraining/rl_data/test.parquet
+  train_files: rl_data/train.parquet
+  val_files: rl_data/test.parquet
   prompt_key: prompt
   truncation: error
   max_prompt_length: 5000
@@ -44,7 +44,7 @@ actor_rollout_ref:
     lora_rank: 64
     lora_alpha: 128
     target_modules: all-linear
-    lora_adapter_path: /data/wuli_error/WRX/QwenTraining/output/v52-20260404-111420/checkpoint-1
+    lora_adapter_path: /root/lg/QwenTraining/output/v1-20260406-123521/checkpoint-30
     # lora_adapter_path: /data/wuli_error/WRX/QwenTraining/output/v52-20260404-111420/checkpoint-1
     use_remove_padding: true
     enable_gradient_checkpointing: true
@@ -132,7 +132,7 @@ reward:
     efficiency_mode: turn_count  # paper eq.5: decay by |tau| (turn count)
     num_workers: 4
   custom_reward_function:
-    path: /data/wuli_error/WRX/QwenTraining/scripts/plugins/verl_codegen1_reward.py
+    path: scripts/plugins/verl_codegen1_reward.py
     name: compute_score
     reward_kwargs:
       timeout_sec: 4
@@ -147,7 +147,7 @@ trainer:
   logger: ['console']
   project_name: DAPO
   experiment_name: DAPO-Qwen3.5-0.8B_${oc.env:EXP_TIME_SUFFIX}
-  n_gpus_per_node: 1
+  n_gpus_per_node: 2
   nnodes: 1
   val_before_train: false
   save_dataloader_state: false # 关闭保存 data.pt
