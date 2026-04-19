@@ -1,5 +1,5 @@
-export CUDA_VISIBLE_DEVICES=2
-export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
+export CUDA_VISIBLE_DEVICES=0
+# export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
 # export HF_HOME=/root/shared-nvme/.cache/huggingface
 # export HF_DATASETS_CACHE=/root/shared-nvme/.cache/huggingface/datasets
 # export VLLM_LOGGING_LEVEL=DEBUG
@@ -15,5 +15,5 @@ python -m lcb_runner.runner.main --model Qwen/Qwen3.5-0.8B \
      --scenario codegeneration \
      --vllm_max_gpu_memory 0.9 \
      --evaluate --n 1 --start_date 2023-01-01 \
-     --lora_path /data/wuli_error/WRX/QwenTraining/outputs/verl/DAPO/DAPO-Qwen3.5-0.8B_04-17_11:55/global_step_3/actor \
+     --lora_path /root/lg/QwenTraining/output/v1-20260406-123521/checkpoint-28 \
      --vllm_max_lora_rank 32

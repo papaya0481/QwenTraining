@@ -1,11 +1,12 @@
 set -euo pipefail
 NGPUS=2
-TP=1
+TP=2
 
 # export LD_LIBRARY_PATH=/data/wuli_error/miniconda3/envs/llmqw/lib
 # export TORCH_NCCL_AVOID_RECORD_STREAMS=1
-export VLLM_USE_V1=1
-# export CUDA_VISIBLE_DEVICES=2
+# export CUDA_VISIBLE_DEVICES=1
+# export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export RAY_TMPDIR=/root/shared-nvme/.cache/ray
 export PJ_ROOT=$(pwd)
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 # verl_root=${script_dir}/verl
@@ -26,8 +27,7 @@ python3 -m scripts.dapo.main_dapo \
     --config-name=dapo_qwen3_5_0_8b \
     trainer.n_gpus_per_node=$NGPUS \
     trainer.experiment_name=DAPO-Qwen3.5-0.8B_${EXP_TIME_SUFFIX} \
-    actor_rollout_ref.rollout.tensor_model_parallel_size=$TP \
-    "$@"
+    actor_rollout_ref.rollout.tensor_model_parallel_size=$TP
 
 # ray job submit \
 #     --address="${ray_address}" \
