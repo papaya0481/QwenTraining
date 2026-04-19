@@ -45,8 +45,9 @@ RuntimeError: The size of tensor a (3) must match the size of tensor b (8) at no
 
 对于 `Qwen-VL` 系列和 `Qwen3.5` 这一类模型，数据侧可能会构造 3D 的 `position_ids`，用于多模态或 mRoPE 位置编码路径。项目里已有相关逻辑：
 
-- 多模态样本会构造 `(4, seq_len)` 形状的单样本 `position_ids`
-- collate 后会变成 3D jagged nested tensor
+- 对 `Qwen3/Qwen3.5` 这类较新的实现，单样本 `position_ids` 通常是 `(3, seq_len)`
+- 某些旧路径或旧测试里还保留着 `(4, seq_len)` 的历史假设
+- collate 后它们都会变成 3D jagged nested tensor
 - 后续训练路径需要依赖 nested tensor 的 ragged 轴元信息来正确解释这个张量
 
 也就是说，是否“输入了视频文件”并不是唯一条件。只要某条数据经过处理后走到了 3D `position_ids` 路径，后续 micro-batch 切分就可能暴露这个 bug。
@@ -91,12 +92,14 @@ data["position_ids"]._ragged_idx = 2
 
 这个字段非常关键。它告诉 PyTorch 这个 3D jagged nested tensor 的 ragged 轴在什么位置。
 
-### 4.2 问题出在 micro-batch 切分后的重建
+### 4.2 问题出在 micro-batch 切分、序列化以及前向整理阶段
 
 后续训练会把原始 batch 切成多个 micro-batch：
 
 - 动态 batch 路径使用 `index_select_tensor_dict(...)`
 - 静态 micro-batch 路径使用 `chunk_tensordict(...)`
+
+另外，真实训练里 `TensorDict` 还会经过序列化 / 反序列化，以及 `prepare_model_inputs(...)` 里的 no-padding 展平。
 
 这两个函数内部都会重新调用：
 
@@ -106,7 +109,7 @@ torch.nested.as_nested_tensor(...)
 
 来重建新的 nested tensor。
 
-问题在于，PyTorch 重建出的新 nested tensor 不会自动保留 `_ragged_idx` 这类自定义元信息。
+问题在于，PyTorch 重建出的新 nested tensor 不会自动保留 `_ragged_idx` 这类自定义元信息；而前向里如果继续直接依赖 `position_ids.values()`，就会把这种 metadata 丢失放大成真实 shape mismatch。
 
 结果就是：
 
@@ -146,6 +149,11 @@ torch.nested.as_nested_tensor(...)
 主要修改：
 
 - [verl/verl/utils/tensordict_utils.py](/Users/thebug/Desktop/new/verls/QwenTraining/verl/verl/utils/tensordict_utils.py:162)
+- [verl/verl/protocol.py](/Users/thebug/Desktop/new/verls/QwenTraining/verl/verl/protocol.py:277)
+- [verl/verl/workers/engine/fsdp/transformer_impl.py](/Users/thebug/Desktop/new/verls/QwenTraining/verl/verl/workers/engine/fsdp/transformer_impl.py:925)
+- [verl/verl/workers/engine/automodel/transformer_impl.py](/Users/thebug/Desktop/new/verls/QwenTraining/verl/verl/workers/engine/automodel/transformer_impl.py:500)
+- [verl/verl/workers/engine/torchtitan/transformer_impl.py](/Users/thebug/Desktop/new/verls/QwenTraining/verl/verl/workers/engine/torchtitan/transformer_impl.py:590)
+- [verl/verl/experimental/agent_loop/agent_loop.py](/Users/thebug/Desktop/new/verls/QwenTraining/verl/verl/experimental/agent_loop/agent_loop.py:824)
 
 新增辅助函数：
 
@@ -155,6 +163,11 @@ torch.nested.as_nested_tensor(...)
 
 - 如果源 nested tensor 带有 `_ragged_idx`
 - 则在重建出的目标 nested tensor 上恢复该字段
+
+此外还新增了两个更贴近真实训练路径的修复：
+
+- `deserialize_tensordict(...)` 对反序列化得到的 3D `position_ids` 直接恢复 `_ragged_idx = 2`
+- 三套 engine 在整理 no-padding `position_ids` 时，改为按样本 `unbind()` 后再拼接，不再依赖脆弱的 `position_ids.values()` 语义
 
 ### 5.2 修复覆盖的路径
 
@@ -186,17 +199,22 @@ torch.nested.as_nested_tensor(...)
 
 - `chunk_tensordict(...)` 后 `position_ids._ragged_idx` 仍然存在
 - `index_select_tensor_dict(...)` 后 `position_ids._ragged_idx` 仍然存在
+- `serialize_tensordict(...) / deserialize_tensordict(...)` 后，3D `position_ids` 的 metadata 仍然存在
 
 ### 6.2 `prepare_micro_batches(...)` 路径测试
 
 文件：
 
 - [verl/tests/utils/test_prepare_micro_batches_with_group_size.py](/Users/thebug/Desktop/new/verls/QwenTraining/verl/tests/utils/test_prepare_micro_batches_with_group_size.py:34)
+- [verl/tests/utils/test_padding_on_cpu.py](/Users/thebug/Desktop/new/verls/QwenTraining/verl/tests/utils/test_padding_on_cpu.py:137)
+- [verl/tests/experimental/agent_loop/test_agent_loop_extra_fields_schema_on_cpu.py](/Users/thebug/Desktop/new/verls/QwenTraining/verl/tests/experimental/agent_loop/test_agent_loop_extra_fields_schema_on_cpu.py:295)
 
 覆盖内容：
 
 - 动态 batch 路径下，3D `position_ids` 元信息不丢失
 - 静态 `micro_batch_size_per_gpu=2` 路径下，3D `position_ids` 元信息不丢失
+- `left_right_2_no_padding(...)` 后，3D `position_ids` 元信息不丢失
+- `AgentLoopWorker._compute_position_ids(...)` 对 Qwen3.5 风格的 RoPE 输出保持 `(1, 3, seq_len)`，不再额外拼出旧的第 4 轴
 
 ---
 
