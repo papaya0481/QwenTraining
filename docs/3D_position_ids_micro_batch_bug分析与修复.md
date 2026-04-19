@@ -252,9 +252,103 @@ python3 -c "import torch; import pytest; print(torch.__version__)"
 
 如果这里导入失败，说明不是代码问题，而是测试环境没激活对。
 
+### 7.6 本次实际 CPU 测试结果
+
+本次在 `ft` 环境中实际执行过如下测试：
+
+```bash
+python3 -m pytest verl/tests/utils/test_prepare_micro_batches_with_group_size.py -k "preserves_3d_position_ids" -q
+```
+
+最终结果：
+
+```text
+2 passed, 6 deselected
+```
+
+随后又执行：
+
+```bash
+python3 -m pytest \
+  verl/tests/test_protocol_v2_on_cpu.py \
+  verl/tests/utils/test_prepare_micro_batches_with_group_size.py \
+  -k "position_ids or preserves_3d_position_ids or chunk_tensordict" \
+  -q
+```
+
+最终结果：
+
+```text
+4 passed, 39 deselected
+```
+
+这说明当前 CPU 回归已经覆盖并通过了下面几条关键路径：
+
+- `chunk_tensordict(...)`
+- `index_select_tensor_dict(...)`
+- `use_dynamic_bsz=True` 的动态切 batch
+- `use_dynamic_bsz=False` 且 `micro_batch_size_per_gpu > 1` 的静态切 batch
+
+### 7.7 本次测试中踩到的两个坑
+
+这次在补测试时，还额外暴露了两个“不是主 bug 本身，但会影响测试正确性”的问题。
+
+#### 坑 1：测试里把 `micro_batch_size_per_gpu` 塞成了标量 tensor
+
+最开始测试里写的是：
+
+```python
+batch["micro_batch_size_per_gpu"] = torch.tensor(micro_batch_size_per_gpu)
+```
+
+这会直接触发 `TensorDict` 的 batch 维检查报错，因为：
+
+- `batch.batch_size == [4]`
+- 但塞进去的是一个 shape 为 `[]` 的标量 tensor
+
+因此测试应改成与真实训练更一致的方式，把它作为配置型元信息注入，而不是普通 batch tensor。
+
+#### 坑 2：静态路径代码本身直接读取 `data["micro_batch_size_per_gpu"]`
+
+在 `prepare_micro_batches(...)` 的静态路径里，原来代码直接写的是：
+
+```python
+micro_batch_size_per_gpu = data["micro_batch_size_per_gpu"]
+```
+
+这会让调用方的数据表示方式变得非常敏感：
+
+- 如果传进来的是普通 tensor，就会继续参与张量运算
+- 一旦是带 batch 维的 tensor，就可能在 `assert` 中触发 “Boolean value of Tensor with more than one value is ambiguous”
+
+这次已经一起修成：
+
+```python
+micro_batch_size_per_gpu = tu.get_non_tensor_data(...)
+```
+
+这样与真实训练时的配置注入方式保持一致，也让静态 micro-batching 路径更加稳健。
+
 ---
 
-## 8. 给我的反馈建议
+## 8. 后续推荐验证顺序
+
+CPU 回归通过后，建议按下面顺序回到真实训练验证：
+
+1. 先验证静态路径  
+   `use_dynamic_bsz=False`，`ppo_micro_batch_size_per_gpu=2`
+
+2. 再验证动态路径  
+   `use_dynamic_bsz=True`，`ppo_max_token_len_per_gpu=8192`
+
+这样做的好处是：
+
+- 静态路径复现更直接，便于确认“`bs>=2` 就炸”的原始问题是否已经消失
+- 动态路径可以继续验证 `index_select_tensor_dict(...)` 那条修复链路
+
+---
+
+## 9. 给我的反馈建议
 
 你跑完后，优先把下面几类信息发给我：
 
@@ -273,7 +367,7 @@ python3 -c "import torch; import pytest; print(torch.__version__)"
 
 ---
 
-## 9. 当前结论
+## 10. 当前结论
 
 这次 bug 的本质不是 OOM，也不是单纯的 `dynamic batch size` 问题，而是：
 
