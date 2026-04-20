@@ -192,25 +192,25 @@ step:2 - global_seqlen/min:... - actor/entropy:... - timing_s/gen:... - perf/thr
 
 | Metric | 含义 |
 | --- | --- |
-| `critic/score/mean|max|min` | 每条轨迹最终 `token_level_scores` 求和后的统计量。通常是 reward function 的直接输出。 |
-| `critic/rewards/mean|max|min` | 每条轨迹最终 `token_level_rewards` 求和后的统计量。若启用了 KL-in-reward，它会和 `score` 不同。 |
-| `critic/advantages/mean|max|min` | 有效 response token 上 advantage 的统计量。 |
-| `critic/returns/mean|max|min` | 有效 response token 上 return 的统计量。 |
-| `critic/values/mean|max|min` | critic 预测 value 的统计量。只在启用 critic 时出现。 |
+| `critic/score/mean, /max, /min` | 每条轨迹最终 `token_level_scores` 求和后的统计量。通常是 reward function 的直接输出。 |
+| `critic/rewards/mean, /max, /min` | 每条轨迹最终 `token_level_rewards` 求和后的统计量。若启用了 KL-in-reward，它会和 `score` 不同。 |
+| `critic/advantages/mean, /max, /min` | 有效 response token 上 advantage 的统计量。 |
+| `critic/returns/mean, /max, /min` | 有效 response token 上 return 的统计量。 |
+| `critic/values/mean, /max, /min` | critic 预测 value 的统计量。只在启用 critic 时出现。 |
 | `critic/vf_explained_var` | value function explained variance，越高通常表示 critic 拟合 return 越好。 |
 
 #### Prompt / response / 轨迹结构指标
 
 | Metric | 含义 |
 | --- | --- |
-| `response_length/mean|max|min` | response 长度统计，包含 aborted 样本。 |
+| `response_length/mean, /max, /min` | response 长度统计，包含 aborted 样本。 |
 | `response_length/clip_ratio` | response 长度命中 `max_response_length` 的比例。 |
-| `response_length_non_aborted/mean|max|min` | 非 aborted 样本上的 response 长度统计。 |
+| `response_length_non_aborted/mean, /max, /min` | 非 aborted 样本上的 response 长度统计。 |
 | `response_length_non_aborted/clip_ratio` | 非 aborted 样本中命中长度上限的比例。 |
 | `response/aborted_ratio` | response 长度为 0 的样本比例。 |
-| `prompt_length/mean|max|min` | prompt 长度统计。 |
+| `prompt_length/mean, /max, /min` | prompt 长度统计。 |
 | `prompt_length/clip_ratio` | prompt 长度命中 `max_prompt_length` 的比例。 |
-| `num_turns/min|max|mean` | 多轮对话中 turn 数的统计量。 |
+| `num_turns/min, /max, /mean` | 多轮对话中 turn 数的统计量。 |
 
 #### Timing 指标
 
@@ -230,9 +230,9 @@ step:2 - global_seqlen/min:... - actor/entropy:... - timing_s/gen:... - perf/thr
 | `timing_s/testing` | validation / testing 耗时。发生在触发验证的 step。 |
 | `timing_s/stop_profile` | profiler 关闭逻辑耗时。 |
 | `timing_s/step` | 整个训练 step 的总耗时。 |
-| `timing_s/agent_loop/num_preempted/min|max|mean` | agent loop 中被抢占的次数统计。没有启用相关机制时可能是 `-1`。 |
-| `timing_s/agent_loop/generate_sequences/min|max|mean` | 单条样本在 agent loop 内生成序列的耗时统计。 |
-| `timing_s/agent_loop/tool_calls/min|max|mean` | 单条样本在 agent loop 内 tool call 的耗时统计。 |
+| `timing_s/agent_loop/num_preempted/min, /max, /mean` | agent loop 中被抢占的次数统计。没有启用相关机制时可能是 `-1`。 |
+| `timing_s/agent_loop/generate_sequences/min, /max, /mean` | 单条样本在 agent loop 内生成序列的耗时统计。 |
+| `timing_s/agent_loop/tool_calls/min, /max, /mean` | 单条样本在 agent loop 内 tool call 的耗时统计。 |
 | `timing_s/agent_loop/slowest/generate_sequences` | 最慢样本的序列生成耗时。 |
 | `timing_s/agent_loop/slowest/tool_calls` | 最慢样本的 tool call 耗时。 |
 | `timing_s/agent_loop/slowest/num_preempted` | 最慢样本对应的抢占次数。 |
@@ -275,7 +275,7 @@ step:2 - global_seqlen/min:... - actor/entropy:... - timing_s/gen:... - perf/thr
 | `val-aux/taco_rl/efficiency_decay/mean@1` | 验证集平均效率衰减系数。 |
 | `val-aux/taco_rl/avg_difficulty_weight/mean@1` | 验证集平均难度权重。 |
 | `val-aux/taco_rl/density_sigma/mean@1` | 验证集平均 density sigma。 |
-| `val-aux/num_turns/min|max|mean` | 验证样本的 turn 数统计。 |
+| `val-aux/num_turns/min, /max, /mean` | 验证样本的 turn 数统计。 |
 
 上面 `val-aux/taco_rl/*` 的奖励相关字段，与前面 `compute_score` 返回指标说明是一一对应的，只是这里是对整个验证集做聚合后的日志输出。
 
