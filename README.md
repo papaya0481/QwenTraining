@@ -194,6 +194,8 @@ step:2 - global_seqlen/min:... - actor/entropy:... - timing_s/gen:... - perf/thr
 | --- | --- |
 | `critic/score/mean, /max, /min` | 每条轨迹最终 `token_level_scores` 求和后的统计量。通常是 reward function 的直接输出。 |
 | `critic/rewards/mean, /max, /min` | 每条轨迹最终 `token_level_rewards` 求和后的统计量。若启用了 KL-in-reward，它会和 `score` 不同。 |
+| `reward_extra/dense_reward/mean, /max, /min` | reward 函数额外返回的 dense reward 统计量。当前 DAPO / VeRPO 配置下，它是 testcase 级 shaping reward：先按同一 prompt 下整组 rollout 的 testcase 通过情况得到组级权重，再对当前样本的 testcase 通过标记做加权求和，形式上可理解为 `dense_reward = Σ_j(w'_j * q_j)`，其中 `q_j` 是第 `j` 个 testcase 是否通过，`w'_j` 是结合 testcase 难度和组内通过率密度后的归一化权重。 |
+| `reward_extra/traj_reward/mean, /max, /min` | reward 函数额外返回的 trajectory reward 统计量。当前实现里它直接由结果奖励乘效率衰减得到，即 `traj_reward = outcome_reward * efficiency_decay`。其中 `outcome_reward` 在全部测试通过时为 `1.0`，否则为 `0.0`；`efficiency_decay` 会根据轨迹效率惩罚，一般按 turn 数或 response token 数做衰减。 |
 | `critic/advantages/mean, /max, /min` | 有效 response token 上 advantage 的统计量。 |
 | `critic/returns/mean, /max, /min` | 有效 response token 上 return 的统计量。 |
 | `critic/values/mean, /max, /min` | critic 预测 value 的统计量。只在启用 critic 时出现。 |
