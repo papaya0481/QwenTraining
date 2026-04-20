@@ -15,7 +15,7 @@ data:
   prompt_key: prompt
   truncation: error
   max_prompt_length: 4096
-  max_response_length: 5120 # 最大生成长度，8192+2048 = 10240
+  max_response_length: 2000 # 最大生成长度，8192+2048 = 10240
   filter_overlong_prompts: true
   # gen_batch_size: 4  # 关闭dapo的dynamic sampling后，实际起作用的是这个==train_batch_size
   train_batch_size: 4
@@ -41,10 +41,10 @@ algorithm:
 actor_rollout_ref:
   model:
     path: ${oc.env:MODEL_PATH,Qwen/Qwen3.5-0.8B}
-    # lora_rank: 64
-    # lora_alpha: 128
-    # target_modules: all-linear
-    lora_adapter_path: /root/lg/QwenTraining/output/v1-20260406-123521/checkpoint-30
+    lora_rank: 16
+    lora_alpha: 32
+    target_modules: all-linear
+    lora_adapter_path: /data/wuli_error/WRX/QwenTraining/output/v52-20260404-111420/checkpoint-2
     # lora_adapter_path: /data/wuli_error/WRX/QwenTraining/output/v52-20260404-111420/checkpoint-1
     use_remove_padding: true
     enable_gradient_checkpointing: true
@@ -81,7 +81,7 @@ actor_rollout_ref:
       model_dtype: bfloat16
     checkpoint:
       save_contents: [] # 节省空间
-    ppo_mini_batch_size: 1
+    ppo_mini_batch_size: 2
     ppo_micro_batch_size_per_gpu: 1 # force 1 to not fault
     use_dynamic_bsz: false # 开启动态调整batch size以适应显存见https://woniu9524.github.io/verl-doc/perf/perf_tuning.html
     ppo_max_token_len_per_gpu: 8192
