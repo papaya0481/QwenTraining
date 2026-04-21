@@ -1,11 +1,13 @@
 set -euo pipefail
 NGPUS=2
-TP=2
+TP=1
 
 # export LD_LIBRARY_PATH=/data/wuli_error/miniconda3/envs/llmqw/lib
 # export TORCH_NCCL_AVOID_RECORD_STREAMS=1
 # export CUDA_VISIBLE_DEVICES=1
 # export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+export TRANSFORMERS_OFFLINE=1
+export HF_HUB_OFFLINE=1
 export RAY_TMPDIR=/root/shared-nvme/.cache/ray
 export PJ_ROOT=$(pwd)
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)

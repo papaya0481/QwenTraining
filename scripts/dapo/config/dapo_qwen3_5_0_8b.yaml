@@ -18,7 +18,7 @@ data:
   max_response_length: 2048 # 最大生成长度，8192+2048 = 10240
   filter_overlong_prompts: true
   # gen_batch_size: 4  # 关闭dapo的dynamic sampling后，实际起作用的是这个==train_batch_size
-  train_batch_size: 4
+  train_batch_size: 8
   shuffle: false
   seed: 42
   apply_chat_template_kwargs:
@@ -41,10 +41,10 @@ algorithm:
 actor_rollout_ref:
   model:
     path: ${oc.env:MODEL_PATH,Qwen/Qwen3.5-0.8B}
-    lora_rank: 32
-    lora_alpha: 64
+    lora_rank: 64
+    lora_alpha: 128
     target_modules: all-linear
-    # lora_adapter_path: /root/lg/QwenTraining/output/v1-20260406-123521/checkpoint-28
+    lora_adapter_path: /root/lg/QwenTraining/output/v1-20260406-123521/checkpoint-28
     # lora_adapter_path: /data/wuli_error/WRX/QwenTraining/output/v52-20260404-111420/checkpoint-1
     use_remove_padding: true
     enable_gradient_checkpointing: true
@@ -66,8 +66,8 @@ actor_rollout_ref:
     kl_loss_type: low_var_kl
     # use_torch_compile: false
     # ulysses_sequence_parallel_size: 1
-    # entropy_from_logits_with_chunking: true
-    # entropy_checkpointing: true
+    entropy_from_logits_with_chunking: true
+    entropy_checkpointing: true
     optim:
       lr: 1e-6
       lr_scheduler_type: cosine
@@ -82,7 +82,7 @@ actor_rollout_ref:
     checkpoint:
       save_contents: [] # 节省空间
     ppo_mini_batch_size: 1
-    ppo_micro_batch_size_per_gpu: 1 # force 1 to not fault
+    ppo_micro_batch_size_per_gpu: 2 # force 1 to not fault
     # use_dynamic_bsz: false # 开启动态调整batch size以适应显存见https://woniu9524.github.io/verl-doc/perf/perf_tuning.html
     # ppo_max_token_len_per_gpu: 8192
 
@@ -111,7 +111,7 @@ actor_rollout_ref:
     enforce_eager: false  # 切换eager和flash-attn
     load_format: safetensors
     layered_summon: true # https://verl.readthedocs.io/en/latest/advance/ppo_lora.html
-    # free_cache_engine: true
+    # free_cache_engine: false
     # enable_chunked_prefill: true
     # enable_prefix_caching: false
     # checkpoint_engine:
@@ -122,7 +122,7 @@ actor_rollout_ref:
     log_prob_micro_batch_size_per_gpu: ${actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu}
     # log_prob_use_dynamic_bsz: ${actor_rollout_ref.actor.use_dynamic_bsz}
     # log_prob_max_token_len_per_gpu: ${actor_rollout_ref.actor.ppo_max_token_len_per_gpu}
-    gpu_memory_utilization: 0.4
+    gpu_memory_utilization: 0.25
     tensor_model_parallel_size: 1 # override
     max_num_seqs: 16  # 并行序列数，限制在一定范围内以避免显存不足
     max_num_batched_tokens: 8192 # 单词推理最大长度
@@ -180,5 +180,5 @@ trainer:
   test_freq: 5
   save_freq: 5
   total_epochs: 1
-  # total_training_steps: 20
+  total_training_steps: 20
   default_local_dir: ${oc.env:OUTPUT_DIR,./outputs/verl/${trainer.project_name}/${trainer.experiment_name}}
