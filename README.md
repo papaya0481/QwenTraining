@@ -194,6 +194,13 @@ step:2 - global_seqlen/min:... - actor/entropy:... - timing_s/gen:... - perf/thr
 | --- | --- |
 | `critic/score/mean, /max, /min` | 每条轨迹最终 `token_level_scores` 求和后的统计量。通常是 reward function 的直接输出。 |
 | `critic/rewards/mean, /max, /min` | 每条轨迹最终 `token_level_rewards` 求和后的统计量。若启用了 KL-in-reward，它会和 `score` 不同。 |
+| `critic/advantages/mean, /max, /min` | 有效 response token 上 advantage 的统计量。 |
+| `critic/returns/mean, /max, /min` | 有效 response token 上 return 的统计量。 |
+| `critic/values/mean, /max, /min` | critic 预测 value 的统计量。只在启用 critic 时出现。 |
+| `critic/vf_explained_var` | value function explained variance，越高通常表示 critic 拟合 return 越好。 |
+
+| Metric | 含义 |
+| --- | --- |
 | `reward_extra/acc/mean, /max, /min` | reward 函数额外返回的 testcase 通过率统计量。对单个样本来说，它等于 `passed / total`，范围是 `[0, 1]`。训练时如果想看“当前 batch 平均 testcase 准确率”，优先看这一栏。 |
 | `reward_extra/pass_rate/mean, /max, /min` | 与 `reward_extra/acc/*` 同义，都是 testcase 通过率统计。保留两个名字是为了和 reward 函数返回字段保持一致。 |
 | `reward_extra/passed/mean, /max, /min` | reward 函数额外返回的“每个样本通过了多少个 testcases”的统计量。训练时如果想看“平均每个样本答对了多少个 testcases”，直接看 `reward_extra/passed/mean`。 |
@@ -202,10 +209,10 @@ step:2 - global_seqlen/min:... - actor/entropy:... - timing_s/gen:... - perf/thr
 | `reward_extra/traj_reward/mean, /max, /min` | reward 函数额外返回的 trajectory reward 统计量。当前实现里它直接由结果奖励乘效率衰减得到，即 `traj_reward = outcome_reward * efficiency_decay`。其中 `outcome_reward` 在全部测试通过时为 `1.0`，否则为 `0.0`；`efficiency_decay` 会根据轨迹效率惩罚，一般按 turn 数或 response token 数做衰减。 |
 | `reward_extra/outcome_reward/mean, /max, /min` | reward 函数额外返回的原始结果奖励统计量。当前规则下，单个样本只有全部 testcases 都通过时才是 `1.0`，否则是 `0.0`，所以它更接近“严格全对率”而不是 testcase 平均通过率。 |
 | `reward_extra/efficiency_decay/mean, /max, /min` | reward 函数额外返回的效率衰减系数统计量。它反映轨迹因为 turn 数或 token 数过长而被乘上的衰减程度，可用于和 `traj_reward`、`outcome_reward` 对照看效率惩罚影响。 |
-| `critic/advantages/mean, /max, /min` | 有效 response token 上 advantage 的统计量。 |
-| `critic/returns/mean, /max, /min` | 有效 response token 上 return 的统计量。 |
-| `critic/values/mean, /max, /min` | critic 预测 value 的统计量。只在启用 critic 时出现。 |
-| `critic/vf_explained_var` | value function explained variance，越高通常表示 critic 拟合 return 越好。 |
+
+其中 `acc` 计算方式为 
+$\text{acc}_i = \frac{\text{passed}_i}{\text{total}_i}$，
+$$ \text{rewardextra/acc/mean} = \frac{1}{N} \sum_{i=1}^N \text{acc}_i = \frac{1}{N} \sum_{i=1}^N \frac{\text{passed}_i} {\text{total}_i} $$
 
 #### Prompt / response / 轨迹结构指标
 
@@ -219,6 +226,7 @@ step:2 - global_seqlen/min:... - actor/entropy:... - timing_s/gen:... - perf/thr
 | `prompt_length/mean, /max, /min` | prompt 长度统计。 |
 | `prompt_length/clip_ratio` | prompt 长度命中 `max_prompt_length` 的比例。 |
 | `num_turns/min, /max, /mean` | 多轮对话中 turn 数的统计量。 |
+
 
 #### Timing 指标
 
