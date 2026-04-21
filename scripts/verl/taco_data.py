@@ -2,9 +2,48 @@ import os
 import json
 import hashlib
 import argparse
+
 import datasets
 
 from verl.utils.hdfs_io import copy, makedirs
+
+
+def _identity_selection(dataset):
+    return dataset
+
+
+def _easy_selection(dataset):
+    if "difficulty" not in dataset.column_names:
+        raise ValueError("Dataset does not contain a 'difficulty' column, so training_option='easy' is unavailable.")
+    return dataset.filter(lambda example: example.get("difficulty") == "EASY")
+
+
+TRAINING_OPTION_REGISTRY = {
+    "default": {
+        "select_fn": _identity_selection,
+        "output_prefix": "",
+        "description": "Use the current split behavior on the full dataset.",
+    },
+    "easy": {
+        "select_fn": _easy_selection,
+        "output_prefix": "easy_",
+        "description": "Filter to samples with difficulty == EASY before splitting.",
+    },
+}
+
+
+def apply_training_option(dataset, training_option):
+    option_cfg = TRAINING_OPTION_REGISTRY.get(training_option)
+    if option_cfg is None:
+        available_options = ", ".join(sorted(TRAINING_OPTION_REGISTRY))
+        raise ValueError(f"Unknown training_option: {training_option}. Available options: {available_options}")
+    selected_dataset = option_cfg["select_fn"](dataset)
+    return selected_dataset, option_cfg
+
+
+def validate_test_size(test_size):
+    if not 0.0 < test_size < 1.0:
+        raise ValueError(f"--test-size must be in the open interval (0, 1), but got {test_size}")
 
 
 def make_map_fn(split):
@@ -64,13 +103,31 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--local-dir", required=True)
     parser.add_argument("--hdfs-dir",  default=None)
+    parser.add_argument(
+        "--training-option",
+        default="default",
+        help="Training data selection option. Supported values are registered in TRAINING_OPTION_REGISTRY.",
+    )
+    parser.add_argument(
+        "--test-size",
+        type=float,
+        default=0.05,
+        help="Fraction of the selected dataset to use as the test split.",
+    )
     args = parser.parse_args()
+    validate_test_size(args.test_size)
 
     data_source = "BigfufuOuO/taco_verified"
     raw_data = datasets.load_dataset(data_source, "passed")
+    selected_dataset, option_cfg = apply_training_option(raw_data["train"], args.training_option)
 
-    # The dataset only has a train split; use a 95/5 train-test split.
-    split_ds = raw_data["train"].train_test_split(test_size=0.05, seed=42)
+    print(f"Training option: {args.training_option}")
+    print(f"Option description: {option_cfg['description']}")
+    print(f"Selected dataset size before split: {len(selected_dataset)}")
+    print(f"Train/test ratio: {1.0 - args.test_size:.2%}/{args.test_size:.2%}")
+
+    # The dataset only has a train split; split it according to the requested ratio.
+    split_ds = selected_dataset.train_test_split(test_size=args.test_size, seed=42)
     train_dataset = split_ds["train"]
     test_dataset  = split_ds["test"]
 
@@ -87,8 +144,10 @@ if __name__ == "__main__":
     print("=" * 60)
 
     os.makedirs(args.local_dir, exist_ok=True)
-    train_dataset.to_parquet(os.path.join(args.local_dir, "train.parquet"))
-    test_dataset.to_parquet(os.path.join(args.local_dir,  "test.parquet"))
+    train_filename = f"{option_cfg['output_prefix']}train.parquet"
+    test_filename = f"{option_cfg['output_prefix']}test.parquet"
+    train_dataset.to_parquet(os.path.join(args.local_dir, train_filename))
+    test_dataset.to_parquet(os.path.join(args.local_dir, test_filename))
 
     if args.hdfs_dir:
         makedirs(args.hdfs_dir)
