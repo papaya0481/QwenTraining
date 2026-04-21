@@ -1,74 +1,132 @@
+hydra:
+  searchpath:
+    - file://scripts/dapo/config
+    - file://verl/trainer/config
+    - file://verl/verl/trainer/config
+    - pkg://verl.verl.trainer.config
+
 defaults:
   - dapo_trainer
   - _self_
 
 data:
-  train_files: ${oc.env:TRAIN_FILE}
-  val_files: ${oc.env:TEST_FILE}
+  train_files: rl_data/train.parquet
+  val_files: rl_data/test.parquet
   prompt_key: prompt
   truncation: error
   max_prompt_length: 4096
-  max_response_length: 12288 # 8192 + buffer 4096
-  gen_batch_size: 1536
-  train_batch_size: 512
-  shuffle: true
+  max_response_length: 10240 # 最大生成长度，8192+2048 = 10240
+  filter_overlong_prompts: true
+  # gen_batch_size: 4  # 关闭dapo的dynamic sampling后，实际起作用的是这个==train_batch_size
+  train_batch_size: 8
+  shuffle: false
   seed: 42
+  apply_chat_template_kwargs:
+    enable_thinking: true # 设置开启think
 
 algorithm:
-  adv_estimator: grpo
+  adv_estimator: verpo
+  norm_adv_by_std_in_grpo: false
   use_kl_in_reward: false
   kl_ctrl:
     kl_coef: 0.0
+  verpo_turn_beta: 1.0
+  verpo_turn_norm_by_std: false
   filter_groups:
-    enable: true  # dapo
-    max_num_gen_batches: 10
+    enable: false
+    max_num_gen_batches: 8
     metric: acc  # 参考 https://verl.readthedocs.io/en/latest/algo/dapo.html
 
+# lora_adapter_path: 加载lora 权重
 actor_rollout_ref:
   model:
-    path: Qwen/Qwen3.5-9B
+    path: ${oc.env:MODEL_PATH,Qwen/Qwen3.5-9B}
+    lora_rank: 64
+    lora_alpha: 128
+    target_modules: all-linear
+    lora_adapter_path: /root/lg/QwenTraining/output/v1-20260406-123521/checkpoint-28
+    # lora_adapter_path: /data/wuli_error/WRX/QwenTraining/output/v52-20260404-111420/checkpoint-1
     use_remove_padding: true
     enable_gradient_checkpointing: true
+    lora:
+      merge: false
+      freeze_vision_model: true
+    override_config:
+      dtype: bfloat16
+      attn_implementation: flash_attention_2 # eager  / flash_attention_2
 
   actor:
+    strategy: fsdp2
     use_kl_loss: false
     kl_loss_coef: 0.0
     clip_ratio_low: 0.2
     clip_ratio_high: 0.28
-    clip_ratio_c: 10.0
-    use_dynamic_bsz: true
-    ppo_max_token_len_per_gpu: 16384
-    ppo_mini_batch_size: 32
     entropy_coeff: 0
-    grad_clip: 1.0
     loss_agg_mode: token-mean
-    ulysses_sequence_parallel_size: 8
+    kl_loss_type: low_var_kl
+    # use_torch_compile: false
+    # ulysses_sequence_parallel_size: 1
+    entropy_from_logits_with_chunking: true
+    entropy_checkpointing: true
     optim:
       lr: 1e-6
-      lr_warmup_steps: 10
-      weight_decay: 0.1
+      lr_scheduler_type: cosine
+      min_lr_ratio: 0.1
     fsdp_config:
-      param_offload: true
-      optimizer_offload: true
+      param_offload: false
+      optimizer_offload: false
+      offload_policy: false
+      reshard_after_forward: false
       fsdp_size: -1
+      model_dtype: bfloat16
+    checkpoint:
+      save_contents: [] # 节省空间
+    ppo_mini_batch_size: 1
+    ppo_micro_batch_size_per_gpu: 2 # force 1 to not fault
+    # use_dynamic_bsz: false # 开启动态调整batch size以适应显存见https://woniu9524.github.io/verl-doc/perf/perf_tuning.html
+    # ppo_max_token_len_per_gpu: 8192
 
   # 当use_kl_loss为false以及 use_kl_in_reward=false时，不开启
   ref:
-    log_prob_use_dynamic_bsz: true
-    log_prob_max_token_len_per_gpu: 16384
-    ulysses_sequence_parallel_size: 8
+    model:
+      override_config:
+        attn_implementation: eager
+    # use_torch_compile: false
+    ulysses_sequence_parallel_size: 1
+    entropy_from_logits_with_chunking: true
     fsdp_config:
-      param_offload: true
+      param_offload: false
+      offload_policy: false
+      reshard_after_forward: false
+    log_prob_micro_batch_size_per_gpu: ${actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu}
+    # log_prob_use_dynamic_bsz: ${actor_rollout_ref.actor.use_dynamic_bsz}
+    # log_prob_max_token_len_per_gpu: ${actor_rollout_ref.actor.ppo_max_token_len_per_gpu}
 
   rollout:
+    # trace: # 添加查看val data的回答
+    #   backend: None
+    #   token2text: true  # 能够查看生成的text
+    #   max_samples_per_step_per_worker: 3
     name: vllm
-    n: 16
-    log_prob_use_dynamic_bsz: true
-    log_prob_max_token_len_per_gpu: 16384
-    gpu_memory_utilization: 0.80
-    tensor_model_parallel_size: 4
-    enable_chunked_prefill: true
-    max_num_batched_tokens: 16384
+    enforce_eager: false  # 切换eager和flash-attn
+    load_format: safetensors
+    layered_summon: true # https://verl.readthedocs.io/en/latest/advance/ppo_lora.html
+    # free_cache_engine: false
+    # enable_chunked_prefill: true
+    # enable_prefix_caching: false
+    # checkpoint_engine:
+    #   update_weights_bucket_megabytes: 6144
+    agent:
+      num_workers: 1
+    n: 8 # Group中的数量
+    log_prob_micro_batch_size_per_gpu: ${actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu}
+    # log_prob_use_dynamic_bsz: ${actor_rollout_ref.actor.use_dynamic_bsz}
+    # log_prob_max_token_len_per_gpu: ${actor_rollout_ref.actor.ppo_max_token_len_per_gpu}
+    gpu_memory_utilization: 0.4
+    tensor_model_parallel_size: 1 # override
+    max_num_seqs: 16  # 并行序列数，限制在一定范围内以避免显存不足
+    max_num_batched_tokens: 8192 # 单词推理最大长度
+    max_model_len: 10240 # prompt+response最大长度，超过这个长度会被丢弃
     temperature: 1.0
     top_p: 1.0
     top_k: -1
@@ -79,21 +137,48 @@ actor_rollout_ref:
       do_sample: true
       n: 1
 
-reward_model:
-  reward_manager: dapo
-  overlong_buffer:
-    enable: true
-    len: 4096
-    penalty_factor: 1.0
+reward:
+  reward_manager:
+    name: verpo
+  num_workers: 1
+  reward_kwargs:
+    max_resp_len: 10240
+    overlong_buffer_cfg:
+      enable: true
+      len: 2048
+      penalty_factor: 1.0
+      log: false
+    timeout_sec: 4
+    memory_limit_mb: 1024
+    difficulty_alpha: 2.0
+    density_sigma_floor: 0.001
+    efficiency_gamma: 0.995
+    efficiency_mode: turn_count  # paper eq.5: decay by |tau| (turn count)
+    num_workers: 8
+  custom_reward_function:
+    path: scripts/plugins/verl_codegen1_reward.py
+    name: compute_score
+    reward_kwargs:
+      timeout_sec: 4
+      memory_limit_mb: 1024
+      difficulty_alpha: 2.0
+      density_sigma_floor: 0.001
+      efficiency_gamma: 0.995
+      efficiency_mode: turn_count
 
 trainer:
-  logger: [console, wandb]
-  project_name: DAPO
-  experiment_name: DAPO-Qwen3.5-9B
-  n_gpus_per_node: 2
+  logger: ['console', 'wandb']
+  # logger: ['console']
+  project_name: DAPO_AutoDL
+  experiment_name: DAPO-Qwen3.5-9B_${oc.env:EXP_TIME_SUFFIX}
+  n_gpus_per_node: 1 # override
   nnodes: 1
-  val_before_train: true
+  # balance_batch: false
+  val_before_train: false
+  save_dataloader_state: false # 关闭保存 data.pt
+  max_actor_ckpt_to_keep: 3
   test_freq: 5
   save_freq: 5
   total_epochs: 1
-  default_local_dir: verl_ckpts/${trainer.project_name}/${trainer.experiment_name}
+  total_training_steps: 20
+  default_local_dir: ${oc.env:OUTPUT_DIR,./outputs/verl/${trainer.project_name}/${trainer.experiment_name}}
