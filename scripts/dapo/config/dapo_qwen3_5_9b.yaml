@@ -72,6 +72,7 @@ actor_rollout_ref:
       lr: 1e-6
       lr_scheduler_type: cosine
       min_lr_ratio: 0.1
+      lr_warmup_steps_ratio: 0.03 # https://verl.readthedocs.io/en/latest/examples/config.html
     fsdp_config:
       param_offload: false
       optimizer_offload: false
