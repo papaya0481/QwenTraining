@@ -46,6 +46,16 @@ def validate_test_size(test_size):
         raise ValueError(f"--test-size must be in the open interval (0, 1), but got {test_size}")
 
 
+def maybe_limit_samples(dataset, max_samples):
+    if max_samples is None:
+        return dataset
+    if max_samples <= 0:
+        raise ValueError(f"--max-samples must be a positive integer, but got {max_samples}")
+    if max_samples >= len(dataset):
+        return dataset
+    return dataset.select(range(max_samples))
+
+
 def make_map_fn(split):
 
     def process_fn(example, idx):
@@ -114,16 +124,24 @@ if __name__ == "__main__":
         default=0.05,
         help="Fraction of the selected dataset to use as the test split.",
     )
+    parser.add_argument(
+        "--max-samples",
+        type=int,
+        default=None,
+        help="Optional cap on the total number of selected samples before train/test splitting.",
+    )
     args = parser.parse_args()
     validate_test_size(args.test_size)
 
     data_source = "BigfufuOuO/taco_verified"
     raw_data = datasets.load_dataset(data_source, "passed")
     selected_dataset, option_cfg = apply_training_option(raw_data["train"], args.training_option)
+    selected_dataset = maybe_limit_samples(selected_dataset, args.max_samples)
 
     print(f"Training option: {args.training_option}")
     print(f"Option description: {option_cfg['description']}")
     print(f"Selected dataset size before split: {len(selected_dataset)}")
+    print(f"Max samples: {args.max_samples if args.max_samples is not None else 'all'}")
     print(f"Train/test ratio: {1.0 - args.test_size:.2%}/{args.test_size:.2%}")
 
     # The dataset only has a train split; split it according to the requested ratio.
