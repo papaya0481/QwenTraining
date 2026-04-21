@@ -1,3 +1,6 @@
 [submodule "ms-swift"]
 	path = ms-swift
 	url = https://github.com/papaya0481/ms-swift.git
+[submodule "verl"]
+	path = verl
+	url = https://github.com/papaya0481/verl.git

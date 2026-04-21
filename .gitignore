@@ -8,3 +8,8 @@ result/
 *.log
 *.wandb
 wandb/
+
+rl_data/
+flash-attention/
+outputs/
+verl_ckpts/

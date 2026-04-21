@@ -265,7 +265,6 @@ class SafePythonValidator:
                 sys.stdin = old_stdin
                 sys.stdout = old_stdout
 
-
         def main():
             payload = json.loads(sys.stdin.read())
             code = payload["code"]
@@ -543,8 +542,19 @@ class ModelResponseCodeExecutor:
 
     def _compare(self, actual: Any, expected: Any, mode: str) -> bool:
         if mode == "stdio":
-            return self._compare_text(str(actual), str(expected))
+            actual_text = self._normalize_stdio_text(actual)
+            expected_text = self._normalize_stdio_text(expected)
+            return self._compare_text(actual_text, expected_text)
+        if mode == "call_based":
+            expected = self._unwrap_call_based_expected(expected)
         return self._normalize_value(actual) == self._normalize_value(expected)
+
+    @staticmethod
+    def _unwrap_call_based_expected(expected: Any) -> Any:
+        # Some call-based datasets wrap each single return value as [value].
+        if isinstance(expected, list) and len(expected) == 1:
+            return expected[0]
+        return expected
 
     @staticmethod
     def _normalize_value(value: Any) -> Any:
@@ -554,13 +564,17 @@ class ModelResponseCodeExecutor:
             return [ModelResponseCodeExecutor._normalize_value(x) for x in value]
         if isinstance(value, dict):
             return {
-                k: ModelResponseCodeExecutor._normalize_value(v)
+                str(k): ModelResponseCodeExecutor._normalize_value(v)
                 for k, v in sorted(value.items(), key=lambda item: str(item[0]))
             }
         return value
 
     @staticmethod
     def _compare_text(actual: str, expected: str) -> bool:
+        # Accept whitespace-only formatting differences when token sequence matches.
+        if actual.strip().split() == expected.strip().split():
+            return True
+
         actual_lines = [line.strip() for line in actual.strip().splitlines()]
         expected_lines = [line.strip() for line in expected.strip().splitlines()]
 
@@ -580,7 +594,12 @@ class ModelResponseCodeExecutor:
 
     def _build_mismatch_reason(self, actual: Any, expected: Any, mode: str) -> str:
         if mode == "stdio":
-            return self._build_text_mismatch_reason(str(actual), str(expected))
+            actual_text = self._normalize_stdio_text(actual)
+            expected_text = self._normalize_stdio_text(expected)
+            return self._build_text_mismatch_reason(actual_text, expected_text)
+
+        if mode == "call_based":
+            expected = self._unwrap_call_based_expected(expected)
 
         normalized_actual = self._normalize_value(actual)
         normalized_expected = self._normalize_value(expected)
@@ -627,6 +646,25 @@ class ModelResponseCodeExecutor:
         if len(text) <= max_len:
             return text
         return text[: max_len - 3] + "..."
+
+    @staticmethod
+    def _normalize_stdio_text(value: Any) -> str:
+        if isinstance(value, str):
+            return value
+
+        if isinstance(value, (list, tuple)):
+            lines = []
+            for item in value:
+                if isinstance(item, str):
+                    lines.append(item)
+                else:
+                    lines.append(str(item))
+            text = "\n".join(lines)
+            if lines and not text.endswith("\n"):
+                text += "\n"
+            return text
+
+        return str(value)
 
     @staticmethod
     def _parse_decimal_line(line: str) -> Optional[Tuple[Decimal, ...]]:
