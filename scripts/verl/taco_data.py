@@ -9,6 +9,13 @@ from verl.utils.hdfs_io import copy, makedirs
 
 
 BALANCED_MIX_SEED = 42
+MIX_MEDIUM_DIFFICULTIES = ("EASY", "MEDIUM", "MEDIUM_HARD", "HARD")
+MIX_MEDIUM_WEIGHTS = {
+    "EASY": 1.5,
+    "MEDIUM": 3.5,
+    "MEDIUM_HARD": 3.5,
+    "HARD": 1.5,
+}
 
 
 def _identity_selection(dataset, max_samples=None):
@@ -29,11 +36,13 @@ def _mix_medium_selection(dataset, max_samples=None):
             "Dataset does not contain a 'difficulty' column, so training_option='mix_medium' is unavailable."
         )
 
-    difficulties = sorted(dataset.unique("difficulty"))
-    if len(difficulties) != 4:
+    difficulties = tuple(dataset.unique("difficulty"))
+    expected_difficulties = set(MIX_MEDIUM_DIFFICULTIES)
+    actual_difficulties = set(difficulties)
+    if actual_difficulties != expected_difficulties:
         raise ValueError(
-            "training_option='mix_medium' expects exactly 4 known difficulty buckets, "
-            f"but found {len(difficulties)}: {difficulties}"
+            "training_option='mix_medium' expects the difficulty buckets "
+            f"{MIX_MEDIUM_DIFFICULTIES}, but found {sorted(actual_difficulties)}"
         )
 
     if max_samples is not None and max_samples <= 0:
@@ -41,23 +50,40 @@ def _mix_medium_selection(dataset, max_samples=None):
 
     difficulty_datasets = []
     difficulty_sizes = {}
-    for difficulty in difficulties:
+    for difficulty in MIX_MEDIUM_DIFFICULTIES:
         difficulty_dataset = dataset.filter(lambda example, value=difficulty: example.get("difficulty") == value)
         difficulty_dataset = difficulty_dataset.shuffle(seed=BALANCED_MIX_SEED)
         difficulty_datasets.append((difficulty, difficulty_dataset))
         difficulty_sizes[difficulty] = len(difficulty_dataset)
 
     if max_samples is None:
-        per_difficulty = min(difficulty_sizes.values())
-        target_counts = {difficulty: per_difficulty for difficulty in difficulties}
-    else:
-        num_difficulties = len(difficulties)
-        base_count = max_samples // num_difficulties
-        remainder = max_samples % num_difficulties
+        full_rounds = min(
+            difficulty_sizes[difficulty] // MIX_MEDIUM_WEIGHTS[difficulty] for difficulty in MIX_MEDIUM_DIFFICULTIES
+        )
         target_counts = {
-            difficulty: base_count + (1 if idx < remainder else 0)
-            for idx, difficulty in enumerate(difficulties)
+            difficulty: full_rounds * MIX_MEDIUM_WEIGHTS[difficulty]
+            for difficulty in MIX_MEDIUM_DIFFICULTIES
         }
+    else:
+        ratio_total = sum(MIX_MEDIUM_WEIGHTS.values())
+        base_targets = {
+            difficulty: (max_samples * MIX_MEDIUM_WEIGHTS[difficulty]) // ratio_total
+            for difficulty in MIX_MEDIUM_DIFFICULTIES
+        }
+        allocated = sum(base_targets.values())
+        remainder = max_samples - allocated
+        target_counts = dict(base_targets)
+
+        if remainder:
+            remainders = sorted(
+                MIX_MEDIUM_DIFFICULTIES,
+                key=lambda difficulty: (
+                    -((max_samples * MIX_MEDIUM_WEIGHTS[difficulty]) % ratio_total),
+                    MIX_MEDIUM_DIFFICULTIES.index(difficulty),
+                ),
+            )
+            for difficulty in remainders[:remainder]:
+                target_counts[difficulty] += 1
 
         insufficient = {
             difficulty: {"required": required, "available": difficulty_sizes[difficulty]}
@@ -96,8 +122,8 @@ TRAINING_OPTION_REGISTRY = {
         "select_fn": _mix_medium_selection,
         "output_prefix": "mix_medium_",
         "description": (
-            "Build a balanced mixed-difficulty subset from the 4 known difficulty buckets. "
-            "With --max-samples, sample an even 25% mix; without it, stop when one bucket is exhausted."
+            "Build a mixed-difficulty subset using EASY/MEDIUM/MEDIUM_HARD/HARD = 20%/30%/30%/20%. "
+            "With --max-samples, sample to that ratio; without it, stop when one bucket can no longer satisfy a round."
         ),
         "handles_max_samples": True,
     },
