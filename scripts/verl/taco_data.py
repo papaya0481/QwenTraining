@@ -8,14 +8,75 @@ import datasets
 from verl.utils.hdfs_io import copy, makedirs
 
 
-def _identity_selection(dataset):
+BALANCED_MIX_SEED = 42
+
+
+def _identity_selection(dataset, max_samples=None):
+    del max_samples
     return dataset
 
 
-def _easy_selection(dataset):
+def _easy_selection(dataset, max_samples=None):
+    del max_samples
     if "difficulty" not in dataset.column_names:
         raise ValueError("Dataset does not contain a 'difficulty' column, so training_option='easy' is unavailable.")
     return dataset.filter(lambda example: example.get("difficulty") == "EASY")
+
+
+def _mix_medium_selection(dataset, max_samples=None):
+    if "difficulty" not in dataset.column_names:
+        raise ValueError(
+            "Dataset does not contain a 'difficulty' column, so training_option='mix_medium' is unavailable."
+        )
+
+    difficulties = sorted(dataset.unique("difficulty"))
+    if len(difficulties) != 4:
+        raise ValueError(
+            "training_option='mix_medium' expects exactly 4 known difficulty buckets, "
+            f"but found {len(difficulties)}: {difficulties}"
+        )
+
+    if max_samples is not None and max_samples <= 0:
+        raise ValueError(f"--max-samples must be a positive integer, but got {max_samples}")
+
+    difficulty_datasets = []
+    difficulty_sizes = {}
+    for difficulty in difficulties:
+        difficulty_dataset = dataset.filter(lambda example, value=difficulty: example.get("difficulty") == value)
+        difficulty_dataset = difficulty_dataset.shuffle(seed=BALANCED_MIX_SEED)
+        difficulty_datasets.append((difficulty, difficulty_dataset))
+        difficulty_sizes[difficulty] = len(difficulty_dataset)
+
+    if max_samples is None:
+        per_difficulty = min(difficulty_sizes.values())
+        target_counts = {difficulty: per_difficulty for difficulty in difficulties}
+    else:
+        num_difficulties = len(difficulties)
+        base_count = max_samples // num_difficulties
+        remainder = max_samples % num_difficulties
+        target_counts = {
+            difficulty: base_count + (1 if idx < remainder else 0)
+            for idx, difficulty in enumerate(difficulties)
+        }
+
+        insufficient = {
+            difficulty: {"required": required, "available": difficulty_sizes[difficulty]}
+            for difficulty, required in target_counts.items()
+            if difficulty_sizes[difficulty] < required
+        }
+        if insufficient:
+            raise ValueError(
+                "Cannot build a balanced mix_medium dataset for the requested --max-samples. "
+                f"Difficulty capacities: {difficulty_sizes}, requested per-difficulty counts: {target_counts}, "
+                f"insufficient buckets: {insufficient}"
+            )
+
+    selected_parts = []
+    for difficulty, difficulty_dataset in difficulty_datasets:
+        selected_parts.append(difficulty_dataset.select(range(target_counts[difficulty])))
+
+    mixed_dataset = datasets.concatenate_datasets(selected_parts)
+    return mixed_dataset.shuffle(seed=BALANCED_MIX_SEED)
 
 
 TRAINING_OPTION_REGISTRY = {
@@ -23,21 +84,32 @@ TRAINING_OPTION_REGISTRY = {
         "select_fn": _identity_selection,
         "output_prefix": "",
         "description": "Use the current split behavior on the full dataset.",
+        "handles_max_samples": False,
     },
     "easy": {
         "select_fn": _easy_selection,
         "output_prefix": "easy_",
         "description": "Filter to samples with difficulty == EASY before splitting.",
+        "handles_max_samples": False,
+    },
+    "mix_medium": {
+        "select_fn": _mix_medium_selection,
+        "output_prefix": "mix_medium_",
+        "description": (
+            "Build a balanced mixed-difficulty subset from the 4 known difficulty buckets. "
+            "With --max-samples, sample an even 25% mix; without it, stop when one bucket is exhausted."
+        ),
+        "handles_max_samples": True,
     },
 }
 
 
-def apply_training_option(dataset, training_option):
+def apply_training_option(dataset, training_option, max_samples=None):
     option_cfg = TRAINING_OPTION_REGISTRY.get(training_option)
     if option_cfg is None:
         available_options = ", ".join(sorted(TRAINING_OPTION_REGISTRY))
         raise ValueError(f"Unknown training_option: {training_option}. Available options: {available_options}")
-    selected_dataset = option_cfg["select_fn"](dataset)
+    selected_dataset = option_cfg["select_fn"](dataset, max_samples=max_samples)
     return selected_dataset, option_cfg
 
 
@@ -135,8 +207,11 @@ if __name__ == "__main__":
 
     data_source = "BigfufuOuO/taco_verified"
     raw_data = datasets.load_dataset(data_source, "passed")
-    selected_dataset, option_cfg = apply_training_option(raw_data["train"], args.training_option)
-    selected_dataset = maybe_limit_samples(selected_dataset, args.max_samples)
+    selected_dataset, option_cfg = apply_training_option(
+        raw_data["train"], args.training_option, max_samples=args.max_samples
+    )
+    if not option_cfg.get("handles_max_samples", False):
+        selected_dataset = maybe_limit_samples(selected_dataset, args.max_samples)
 
     print(f"Training option: {args.training_option}")
     print(f"Option description: {option_cfg['description']}")
