@@ -212,6 +212,7 @@ step:2 - global_seqlen/min:... - actor/entropy:... - timing_s/gen:... - perf/thr
 
 其中 `acc` 计算方式为 
 $\text{acc}_i = \frac{\text{passed}_i}{\text{total}_i}$，
+
 $$ \text{rewardextra/acc/mean} = \frac{1}{N} \sum_{i=1}^N \text{acc}_i = \frac{1}{N} \sum_{i=1}^N \frac{\text{passed}_i} {\text{total}_i} $$
 
 #### Prompt / response / 轨迹结构指标
