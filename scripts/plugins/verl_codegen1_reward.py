@@ -1,11 +1,11 @@
 """Custom reward function for VeRPO on codegen1.
 
 Key fix vs. original: rho_j (per-testcase pass rate) is computed from the
-current rollout GROUP, not from a global EMA.  The reward manager
+current rollout GROUP, not from a global EMA. The reward manager
 (VeRPORewardManager in verpo_reward_manager.py) collects all N trajectories
 for a prompt, calls compute_score_single to get raw execution results, then
 calls compute_group_dense_reward to compute the group-level rho_j / w_j / w_j'
-and the final R^turn = sum_j w_j' * p_j  (weighted sum, not normalised avg).
+and the final R^turn as a weight-normalized weighted average.
 
 compute_score is kept as the single-sample entry-point used by DAPORewardManager
 for backward compatibility (e.g. validation), but it now falls back to a
@@ -144,7 +144,9 @@ def compute_group_dense_reward(
                              / (total number of turns across group)
     For single-turn: each trajectory has 1 turn, so denominator = N.
 
-    Paper eq. (4):  R^turn = sum_j  w_j' * p_j   (weighted SUM, not avg)
+    Paper eq. (4) is implemented with an extra normalization step in this
+    repository: after the density-adjusted weights w_j' are computed, divide
+    the weighted sum by sum_j w_j' so the dense reward stays on a stable scale.
     """
     if not group_passed_flags or not query_passed_flags:
         return 0.0, 0.0, sigma_floor
@@ -165,9 +167,14 @@ def compute_group_dense_reward(
     density = np.exp(-(diff ** 2) / (2.0 * sigma * sigma + density_eps)).sum(axis=1)
     normalized_weights = base_weights / (density + density_eps)  # [N_tests]
 
-    # R^turn = sum_j w_j' * p_j  (eq. 4 — weighted SUM, not normalised avg)
+    # Normalize by the aggregate weight so the reward remains scale-stable
+    # across prompts with different testcase weight profiles.
     query_arr = np.asarray(query_passed_flags, dtype=np.float64)
-    r_turn = float(np.dot(normalized_weights, query_arr))
+    weight_sum = float(normalized_weights.sum())
+    if weight_sum <= density_eps:
+        r_turn = 0.0
+    else:
+        r_turn = float(np.dot(normalized_weights, query_arr) / weight_sum)
     avg_weight = float(base_weights.mean())
     return r_turn, avg_weight, sigma
 

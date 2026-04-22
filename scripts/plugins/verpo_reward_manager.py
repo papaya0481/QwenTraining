@@ -6,8 +6,8 @@ per-sample independently, this manager:
 1. Runs code execution for all N samples in a prompt group in parallel.
 2. Collects the per-testcase passed_flags for every sample in the group.
 3. Computes group-level rho_j (eq. 1 in the paper) from those flags.
-4. Computes R^turn = sum_j w_j' * p_j (eq. 4) for each sample using the
-   shared group-level weights — exactly as the paper specifies.
+4. Computes R^turn from the shared group-level weights, then normalizes by
+   the aggregate testcase weight so dense rewards stay on a stable scale.
 5. Computes traj_reward with turn-count-based efficiency decay (eq. 5).
 
 This manager is registered as "verpo" and is selected via:
@@ -181,9 +181,10 @@ class VeRPORewardManager(AbstractRewardManager):
                     -(diff ** 2) / (2.0 * sigma_val * sigma_val + rk["density_eps"])
                 ).sum(axis=1)
                 norm_w = base_w / (density + rk["density_eps"])           # [M]
+                norm_w_sum = float(norm_w.sum())
                 avg_w_group = float(base_w.mean())
             else:
-                norm_w = avg_w_group = sigma_val = None
+                norm_w = norm_w_sum = avg_w_group = sigma_val = None
 
             for i in indices:
                 raw = raw_results[i]
@@ -196,7 +197,10 @@ class VeRPORewardManager(AbstractRewardManager):
 
                 if norm_w is not None:
                     q = np.asarray(raw["passed_flags"], dtype=np.float64)
-                    dense_reward = float(np.dot(norm_w, q))
+                    if norm_w_sum <= rk["density_eps"]:
+                        dense_reward = 0.0
+                    else:
+                        dense_reward = float(np.dot(norm_w, q) / norm_w_sum)
                     avg_w, sigma = avg_w_group, sigma_val
                 else:
                     dense_reward, avg_w, sigma = 0.0, 0.0, rk["density_sigma_floor"]
