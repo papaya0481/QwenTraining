@@ -192,36 +192,29 @@ step:2 - global_seqlen/min:... - actor/entropy:... - timing_s/gen:... - perf/thr
 
 记号：
 
-$$
-s_i := \texttt{reward\_extra/score}_i,\quad
-d_i := \texttt{dense\_reward}_i,\quad
-\tau_i := \texttt{traj\_reward}_i,\quad
-o_i := \texttt{outcome\_reward}_i
-$$
+- `s_i`: `reward_extra/score`
+- `d_i`: `reward_extra/dense_reward`
+- `\tau_i`: `reward_extra/traj_reward`
+- `o_i`: `reward_extra/outcome_reward`
+- `\eta_i`: `reward_extra/efficiency_decay`
+- `\delta_i`: overlong penalty
+- `r_i`: 最终写入训练的样本级 reward
+- `R_{i,t}`: token-level score / reward
+- `m_{i,t}`: `response_mask`
+- `A_{i,t}`: advantage
+- `G_{i,t}`: return
+- `V_{i,t}`: critic value
 
 $$
-\delta_i := \texttt{overlong\_penalty}_i,\quad
-m_{i,t} := \texttt{response\_mask}_{i,t}
+s_i = \tau_i,\quad
+\tau_i = o_i \cdot \eta_i,\quad
+r_i = s_i + \delta_i
 $$
 
 当前 VeRPO / DAPO 配置下，主链路可直接记成：
 
 $$
-\tau_i = o_i \cdot \texttt{efficiency\_decay}_i
-$$
-
-$$
-s_i = \tau_i
-$$
-
-$$
-r_i = s_i + \delta_i
-$$
-
-reward manager 会把最终训练 reward 只写到最后一个有效 response token 上：
-
-$$
-\texttt{rm\_scores}_{i,t} =
+R_{i,t} =
 \begin{cases}
 r_i, & t = t_i^{\text{last}} \\
 0, & \text{otherwise}
@@ -229,28 +222,28 @@ r_i, & t = t_i^{\text{last}} \\
 $$
 
 $$
-\texttt{token\_level\_scores} = \texttt{rm\_scores}
+\texttt{token-level-scores} = R
 $$
 
 不开 KL-in-reward 时：
 
 $$
-\texttt{token\_level\_rewards}_{i,t} = \texttt{token\_level\_scores}_{i,t}
+\texttt{token-level-rewards}_{i,t} = R_{i,t}
 $$
 
 开启 KL-in-reward 时：
 
 $$
-\texttt{token\_level\_rewards}_{i,t}
+\texttt{token-level-rewards}_{i,t}
 =
-\texttt{token\_level\_scores}_{i,t}
+R_{i,t}
 - \beta \bigl(\log \pi_{\text{old}}(a_{i,t}) - \log \pi_{\text{ref}}(a_{i,t})\bigr)
 $$
 
 | Metric | 含义 |
 | --- | --- |
-| `critic/score/mean, /max, /min` | $\sum_t \texttt{token\_level\_scores}_{i,t}$ 的统计量。当前实现里通常等于最终训练 reward $r_i$ 的统计。 |
-| `critic/rewards/mean, /max, /min` | $\sum_t \texttt{token\_level\_rewards}_{i,t}$ 的统计量。不开 KL 时通常与 `critic/score/*` 相同。 |
+| `critic/score/mean, /max, /min` | $\sum_t R_{i,t}$ 的统计量。当前实现里通常等于最终训练 reward $r_i$ 的统计。 |
+| `critic/rewards/mean, /max, /min` | $\sum_t \text{reward}_{i,t}$ 的统计量。不开 KL 时通常与 `critic/score/*` 相同。 |
 | `critic/advantages/mean, /max, /min` | $A_{i,t}$ 的统计量。它是优化信号，不是 reward 本身。 |
 | `critic/returns/mean, /max, /min` | $G_{i,t}$ 的统计量。它是 value/advantage 路径里的目标回报。 |
 | `critic/values/mean, /max, /min` | $V_{i,t}$ 的统计量，即 critic 对 future return 的估计。 |
@@ -263,16 +256,16 @@ $$
 | `reward_extra/passed/mean, /max, /min` | reward 函数额外返回的“每个样本通过了多少个 testcases”的统计量。训练时如果想看“平均每个样本答对了多少个 testcases”，直接看 `reward_extra/passed/mean`。 |
 | `reward_extra/total/mean, /max, /min` | reward 函数额外返回的“每个样本总共评测了多少个 testcases”的统计量。通常用于和 `passed`、`acc` 一起对照理解 batch 内样本难度或 testcase 数量分布。 |
 | `reward_extra/dense_reward/mean, /max, /min` | $d_i$ 的统计量。当前 VeRPO 下可记为 $d_i = \sum_j w'_j q_{i,j}$。 |
-| `reward_extra/traj_reward/mean, /max, /min` | $\tau_i$ 的统计量。当前实现里 $\tau_i = o_i \cdot \texttt{efficiency\_decay}_i$。 |
+| `reward_extra/traj_reward/mean, /max, /min` | $\tau_i$ 的统计量。当前实现里 $\tau_i = o_i \cdot \eta_i$。 |
 | `reward_extra/outcome_reward/mean, /max, /min` | $o_i$ 的统计量。当前规则下，全测例通过时 $o_i=1$，否则 $o_i=0$。 |
-| `reward_extra/efficiency_decay/mean, /max, /min` | $\texttt{efficiency\_decay}_i$ 的统计量。 |
+| `reward_extra/efficiency_decay/mean, /max, /min` | $\eta_i$ 的统计量。 |
 
 若启用 critic 并走 GAE，可近似记为：
 
 $$
 \delta^{\text{GAE}}_{i,t}
 =
-\texttt{token\_level\_rewards}_{i,t}
+\text{reward}_{i,t}
 + \gamma V_{i,t+1}
 - V_{i,t}
 $$
@@ -306,10 +299,25 @@ $$
 A_{i,t} = A_i \, m_{i,t},\qquad G_{i,t} = A_{i,t}
 $$
 
-其中 `acc` 计算方式为 
-$\text{acc}_i = \frac{\text{passed}_i}{\text{total}_i}$，
+再记：
 
-$$ \text{rewardextra/acc/mean} = \frac{1}{N} \sum_{i=1}^N \text{acc}_i = \frac{1}{N} \sum_{i=1}^N \frac{\text{passed}_i} {\text{total}_i} $$
+- `a_i`: `acc`
+- `p_i`: `passed`
+- `n_i`: `total`
+
+则
+
+$$
+a_i = \frac{p_i}{n_i}
+$$
+
+$$
+\texttt{reward-extra/acc/mean}
+=
+\frac{1}{N} \sum_{i=1}^N a_i
+=
+\frac{1}{N} \sum_{i=1}^N \frac{p_i}{n_i}
+$$
 
 #### Prompt / response / 轨迹结构指标
 
