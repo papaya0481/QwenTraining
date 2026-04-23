@@ -190,13 +190,70 @@ step:2 - global_seqlen/min:... - actor/entropy:... - timing_s/gen:... - perf/thr
 
 #### Critic / reward / advantage 指标
 
+记号：
+
+$$
+s_i := \texttt{reward\_extra/score}_i,\quad
+d_i := \texttt{dense\_reward}_i,\quad
+\tau_i := \texttt{traj\_reward}_i,\quad
+o_i := \texttt{outcome\_reward}_i
+$$
+
+$$
+\delta_i := \texttt{overlong\_penalty}_i,\quad
+m_{i,t} := \texttt{response\_mask}_{i,t}
+$$
+
+当前 VeRPO / DAPO 配置下，主链路可直接记成：
+
+$$
+\tau_i = o_i \cdot \texttt{efficiency\_decay}_i
+$$
+
+$$
+s_i = \tau_i
+$$
+
+$$
+r_i = s_i + \delta_i
+$$
+
+reward manager 会把最终训练 reward 只写到最后一个有效 response token 上：
+
+$$
+\texttt{rm\_scores}_{i,t} =
+\begin{cases}
+r_i, & t = t_i^{\text{last}} \\
+0, & \text{otherwise}
+\end{cases}
+$$
+
+$$
+\texttt{token\_level\_scores} = \texttt{rm\_scores}
+$$
+
+不开 KL-in-reward 时：
+
+$$
+\texttt{token\_level\_rewards}_{i,t} = \texttt{token\_level\_scores}_{i,t}
+$$
+
+开启 KL-in-reward 时：
+
+$$
+\texttt{token\_level\_rewards}_{i,t}
+=
+\texttt{token\_level\_scores}_{i,t}
+- \beta \bigl(\log \pi_{\text{old}}(a_{i,t}) - \log \pi_{\text{ref}}(a_{i,t})\bigr)
+$$
+
 | Metric | 含义 |
 | --- | --- |
-| `critic/score/mean, /max, /min` | 每条轨迹最终 `token_level_scores` 求和后的统计量。通常是 reward function 的直接输出。 |
-| `critic/rewards/mean, /max, /min` | 每条轨迹最终 `token_level_rewards` 求和后的统计量。若启用了 KL-in-reward，它会和 `score` 不同。 |
-| `critic/advantages/mean, /max, /min` | 有效 response token 上 advantage 的统计量。 |
-| `critic/returns/mean, /max, /min` | 有效 response token 上 return 的统计量。 |
-| `critic/values/mean, /max, /min` | critic 预测 value 的统计量。只在启用 critic 时出现。 |
+| `critic/score/mean, /max, /min` | $\sum_t \texttt{token\_level\_scores}_{i,t}$ 的统计量。当前实现里通常等于最终训练 reward $r_i$ 的统计。 |
+| `critic/rewards/mean, /max, /min` | $\sum_t \texttt{token\_level\_rewards}_{i,t}$ 的统计量。不开 KL 时通常与 `critic/score/*` 相同。 |
+| `critic/advantages/mean, /max, /min` | $A_{i,t}$ 的统计量。它是优化信号，不是 reward 本身。 |
+| `critic/returns/mean, /max, /min` | $G_{i,t}$ 的统计量。它是 value/advantage 路径里的目标回报。 |
+| `critic/values/mean, /max, /min` | $V_{i,t}$ 的统计量，即 critic 对 future return 的估计。 |
 | `critic/vf_explained_var` | value function explained variance，越高通常表示 critic 拟合 return 越好。 |
 
 | Metric | 含义 |
@@ -205,10 +262,49 @@ step:2 - global_seqlen/min:... - actor/entropy:... - timing_s/gen:... - perf/thr
 | `reward_extra/pass_rate/mean, /max, /min` | 与 `reward_extra/acc/*` 同义，都是 testcase 通过率统计。保留两个名字是为了和 reward 函数返回字段保持一致。 |
 | `reward_extra/passed/mean, /max, /min` | reward 函数额外返回的“每个样本通过了多少个 testcases”的统计量。训练时如果想看“平均每个样本答对了多少个 testcases”，直接看 `reward_extra/passed/mean`。 |
 | `reward_extra/total/mean, /max, /min` | reward 函数额外返回的“每个样本总共评测了多少个 testcases”的统计量。通常用于和 `passed`、`acc` 一起对照理解 batch 内样本难度或 testcase 数量分布。 |
-| `reward_extra/dense_reward/mean, /max, /min` | reward 函数额外返回的 dense reward 统计量。当前 DAPO / VeRPO 配置下，它是 testcase 级 shaping reward：先按同一 prompt 下整组 rollout 的 testcase 通过情况得到组级权重，再对当前样本的 testcase 通过标记做加权求和，形式上可理解为 `dense_reward = Σ_j(w'_j * q_j)`，其中 `q_j` 是第 `j` 个 testcase 是否通过，`w'_j` 是结合 testcase 难度和组内通过率密度后的归一化权重。 |
-| `reward_extra/traj_reward/mean, /max, /min` | reward 函数额外返回的 trajectory reward 统计量。当前实现里它直接由结果奖励乘效率衰减得到，即 `traj_reward = outcome_reward * efficiency_decay`。其中 `outcome_reward` 在全部测试通过时为 `1.0`，否则为 `0.0`；`efficiency_decay` 会根据轨迹效率惩罚，一般按 turn 数或 response token 数做衰减。 |
-| `reward_extra/outcome_reward/mean, /max, /min` | reward 函数额外返回的原始结果奖励统计量。当前规则下，单个样本只有全部 testcases 都通过时才是 `1.0`，否则是 `0.0`，所以它更接近“严格全对率”而不是 testcase 平均通过率。 |
-| `reward_extra/efficiency_decay/mean, /max, /min` | reward 函数额外返回的效率衰减系数统计量。它反映轨迹因为 turn 数或 token 数过长而被乘上的衰减程度，可用于和 `traj_reward`、`outcome_reward` 对照看效率惩罚影响。 |
+| `reward_extra/dense_reward/mean, /max, /min` | $d_i$ 的统计量。当前 VeRPO 下可记为 $d_i = \sum_j w'_j q_{i,j}$。 |
+| `reward_extra/traj_reward/mean, /max, /min` | $\tau_i$ 的统计量。当前实现里 $\tau_i = o_i \cdot \texttt{efficiency\_decay}_i$。 |
+| `reward_extra/outcome_reward/mean, /max, /min` | $o_i$ 的统计量。当前规则下，全测例通过时 $o_i=1$，否则 $o_i=0$。 |
+| `reward_extra/efficiency_decay/mean, /max, /min` | $\texttt{efficiency\_decay}_i$ 的统计量。 |
+
+若启用 critic 并走 GAE，可近似记为：
+
+$$
+\delta^{\text{GAE}}_{i,t}
+=
+\texttt{token\_level\_rewards}_{i,t}
++ \gamma V_{i,t+1}
+- V_{i,t}
+$$
+
+$$
+A_{i,t}
+=
+\delta^{\text{GAE}}_{i,t}
++ \gamma \lambda A_{i,t+1}
+$$
+
+$$
+G_{i,t} = A_{i,t} + V_{i,t}
+$$
+
+若走 VeRPO / group-RL 的无 critic 标量 advantage 路径，可记为：
+
+$$
+A_i^{\text{traj}} = \tau_i - \operatorname{mean}_g(\tau)
+$$
+
+$$
+A_i^{\text{turn}} = d_i - \operatorname{mean}_g(d)
+$$
+
+$$
+A_i = A_i^{\text{traj}} + \beta_{\text{turn}} A_i^{\text{turn}}
+$$
+
+$$
+A_{i,t} = A_i \, m_{i,t},\qquad G_{i,t} = A_{i,t}
+$$
 
 其中 `acc` 计算方式为 
 $\text{acc}_i = \frac{\text{passed}_i}{\text{total}_i}$，
