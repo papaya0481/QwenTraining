@@ -18,7 +18,7 @@ data:
   max_response_length: 10240 # 最大生成长度，8192+2048 = 10240
   filter_overlong_prompts: true
   # gen_batch_size: 4  # 关闭dapo的dynamic sampling后，实际起作用的是这个==train_batch_size
-  train_batch_size: 4
+  train_batch_size: 16
   shuffle: false
   seed: 42
   apply_chat_template_kwargs:
@@ -82,7 +82,7 @@ actor_rollout_ref:
       model_dtype: bfloat16
     checkpoint:
       save_contents: [] # 节省空间
-    ppo_mini_batch_size: 1
+    ppo_mini_batch_size: 16
     ppo_micro_batch_size_per_gpu: 1 # force 1 to not fault
     # use_dynamic_bsz: false # 开启动态调整batch size以适应显存见https://woniu9524.github.io/verl-doc/perf/perf_tuning.html
     # ppo_max_token_len_per_gpu: 8192
@@ -178,8 +178,8 @@ trainer:
   val_before_train: false
   save_dataloader_state: false # 关闭保存 data.pt
   max_actor_ckpt_to_keep: 3
-  test_freq: 20
-  save_freq: 20
+  test_freq: 6
+  save_freq: 6
   total_epochs: 1
   # total_training_steps: 20
   default_local_dir: ${oc.env:OUTPUT_DIR,./outputs/verl/${trainer.project_name}/${trainer.experiment_name}}
