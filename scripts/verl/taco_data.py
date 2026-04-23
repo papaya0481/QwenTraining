@@ -2,6 +2,8 @@ import os
 import json
 import hashlib
 import argparse
+import math
+from fractions import Fraction
 
 import datasets
 
@@ -16,6 +18,43 @@ MIX_MEDIUM_WEIGHTS = {
     "MEDIUM_HARD": 3,
     "HARD": 1.5,
 }
+
+
+def _validate_mix_medium_weights():
+    normalized_weights = {}
+    invalid_weights = {}
+    for difficulty, weight in MIX_MEDIUM_WEIGHTS.items():
+        normalized_weight = Fraction(str(weight))
+        normalized_weights[difficulty] = normalized_weight
+        if normalized_weight < 0:
+            invalid_weights[difficulty] = weight
+
+    if invalid_weights:
+        raise ValueError(
+            "MIX_MEDIUM_WEIGHTS must be non-negative for all difficulties, "
+            f"but found invalid values: {invalid_weights}"
+        )
+
+    positive_weights = {
+        difficulty: weight
+        for difficulty, weight in normalized_weights.items()
+        if weight > 0
+    }
+    if not positive_weights:
+        raise ValueError("MIX_MEDIUM_WEIGHTS must contain at least one positive value.")
+
+    scale = math.lcm(*(weight.denominator for weight in positive_weights.values()))
+    scaled_weights = {
+        difficulty: int(weight * scale)
+        for difficulty, weight in normalized_weights.items()
+    }
+    positive_scaled_weights = {
+        difficulty: weight
+        for difficulty, weight in scaled_weights.items()
+        if weight > 0
+    }
+
+    return normalized_weights, scaled_weights, positive_scaled_weights
 
 
 def _identity_selection(dataset, max_samples=None):
@@ -48,6 +87,8 @@ def _mix_medium_selection(dataset, max_samples=None):
     if max_samples is not None and max_samples <= 0:
         raise ValueError(f"--max-samples must be a positive integer, but got {max_samples}")
 
+    normalized_weights, scaled_weights, positive_scaled_weights = _validate_mix_medium_weights()
+
     difficulty_datasets = []
     difficulty_sizes = {}
     for difficulty in MIX_MEDIUM_DIFFICULTIES:
@@ -58,16 +99,17 @@ def _mix_medium_selection(dataset, max_samples=None):
 
     if max_samples is None:
         full_rounds = min(
-            difficulty_sizes[difficulty] // MIX_MEDIUM_WEIGHTS[difficulty] for difficulty in MIX_MEDIUM_DIFFICULTIES
+            difficulty_sizes[difficulty] // positive_scaled_weights[difficulty]
+            for difficulty in positive_scaled_weights
         )
         target_counts = {
-            difficulty: full_rounds * MIX_MEDIUM_WEIGHTS[difficulty]
+            difficulty: full_rounds * scaled_weights[difficulty]
             for difficulty in MIX_MEDIUM_DIFFICULTIES
         }
     else:
-        ratio_total = sum(MIX_MEDIUM_WEIGHTS.values())
+        ratio_total = sum(normalized_weights.values())
         base_targets = {
-            difficulty: (max_samples * MIX_MEDIUM_WEIGHTS[difficulty]) // ratio_total
+            difficulty: int(Fraction(max_samples) * normalized_weights[difficulty] / ratio_total)
             for difficulty in MIX_MEDIUM_DIFFICULTIES
         }
         allocated = sum(base_targets.values())
@@ -78,7 +120,7 @@ def _mix_medium_selection(dataset, max_samples=None):
             remainders = sorted(
                 MIX_MEDIUM_DIFFICULTIES,
                 key=lambda difficulty: (
-                    -((max_samples * MIX_MEDIUM_WEIGHTS[difficulty]) % ratio_total),
+                    -(Fraction(max_samples) * normalized_weights[difficulty] / ratio_total - target_counts[difficulty]),
                     MIX_MEDIUM_DIFFICULTIES.index(difficulty),
                 ),
             )
