@@ -130,7 +130,7 @@ actor_rollout_ref:
     # max_num_batched_tokens: 10240 # 单词推理最大长度
     max_model_len: 16384 # prompt+response最大长度，超过这个长度会被丢弃
     temperature: 1.0
-    top_p: 1.0
+    top_p: 0.95
     top_k: -1
     val_kwargs:
       temperature: 0.2
@@ -179,8 +179,8 @@ trainer:
   val_before_train: false
   save_dataloader_state: false # 关闭保存 data.pt
   max_actor_ckpt_to_keep: 3
-  test_freq: 6
-  save_freq: 6
+  test_freq: 5
+  save_freq: 5
   total_epochs: 1
   # total_training_steps: 20
   default_local_dir: ${oc.env:OUTPUT_DIR,./outputs/verl/${trainer.project_name}/${trainer.experiment_name}}
