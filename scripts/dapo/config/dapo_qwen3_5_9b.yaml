@@ -10,15 +10,15 @@ defaults:
   - _self_
 
 data:
-  train_files: /root/autodl-tmp/rl_data/easy/easy_train.parquet
-  val_files: /root/autodl-tmp/rl_data/easy/easy_test.parquet
+  train_files: /root/autodl-tmp/rl_data/mix_1000/mix_medium_train.parquet
+  val_files: /root/autodl-tmp/rl_data/mix_1000/mix_medium_test.parquet
   prompt_key: prompt
   truncation: error
   max_prompt_length: 4096
   max_response_length: 10240 # 最大生成长度，8192+2048 = 10240
   filter_overlong_prompts: true
   # gen_batch_size: 4  # 关闭dapo的dynamic sampling后，实际起作用的是这个==train_batch_size
-  train_batch_size: 4
+  train_batch_size: 16
   shuffle: false
   seed: 42
   apply_chat_template_kwargs:
@@ -44,7 +44,7 @@ actor_rollout_ref:
     lora_rank: 64
     lora_alpha: 128
     target_modules: all-linear
-    lora_adapter_path: /root/lg/QwenTraining/output/v10-20260408-190245/checkpoint-360
+    lora_adapter_path: /root/lg/QwenTraining/outputs/verl/DAPO_AutoDL/DAPO-Qwen3.5-9B_04-21_1448/global_step_150/actor/lora_adapter
     # lora_adapter_path: /data/wuli_error/WRX/QwenTraining/output/v52-20260404-111420/checkpoint-1
     use_remove_padding: true
     enable_gradient_checkpointing: true
@@ -82,7 +82,7 @@ actor_rollout_ref:
       model_dtype: bfloat16
     checkpoint:
       save_contents: [] # 节省空间
-    ppo_mini_batch_size: 1
+    ppo_mini_batch_size: 16
     ppo_micro_batch_size_per_gpu: 1 # force 1 to not fault
     # use_dynamic_bsz: false # 开启动态调整batch size以适应显存见https://woniu9524.github.io/verl-doc/perf/perf_tuning.html
     # ppo_max_token_len_per_gpu: 8192
@@ -123,7 +123,7 @@ actor_rollout_ref:
     log_prob_micro_batch_size_per_gpu: ${actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu}
     # log_prob_use_dynamic_bsz: ${actor_rollout_ref.actor.use_dynamic_bsz}
     # log_prob_max_token_len_per_gpu: ${actor_rollout_ref.actor.ppo_max_token_len_per_gpu}
-    gpu_memory_utilization: 0.7
+    gpu_memory_utilization: 0.83
     tensor_model_parallel_size: 1 # override
     max_num_seqs: 16  # 并行序列数，限制在一定范围内以避免显存不足
     # max_num_batched_tokens: 10240 # 单词推理最大长度
@@ -178,8 +178,8 @@ trainer:
   val_before_train: false
   save_dataloader_state: false # 关闭保存 data.pt
   max_actor_ckpt_to_keep: 3
-  test_freq: 50
-  save_freq: 50
+  test_freq: 6
+  save_freq: 6
   total_epochs: 1
   # total_training_steps: 20
   default_local_dir: ${oc.env:OUTPUT_DIR,./outputs/verl/${trainer.project_name}/${trainer.experiment_name}}
