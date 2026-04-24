@@ -4,7 +4,7 @@ description: Group-level rho_j reward fix aligning code with paper Section 3/4
 type: project
 ---
 
-Implemented paper-aligned VeRPO reward (April 2026).
+Implemented paper-aligned VeRPO reward (April 2026). The original paper is in `docs/acl_latex.tex`. 
 
 **Why:** Original compute_score used global EMA for rho_j (per-testcase pass rate), but paper eq.1 requires rho_j computed from the current rollout group G_x. Also R^turn was a normalised average, not a weighted sum (eq.4). Efficiency decay used response tokens, not turn count (eq.5).
 
