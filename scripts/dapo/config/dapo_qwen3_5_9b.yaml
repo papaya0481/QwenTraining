@@ -60,8 +60,9 @@ actor_rollout_ref:
     use_kl_loss: false
     kl_loss_coef: 0.0
     clip_ratio_low: 0.2
-    clip_ratio_high: 0.28
+    clip_ratio_high: 0.25
     entropy_coeff: 0
+    grad_clip: 1.0
     loss_agg_mode: token-mean
     kl_loss_type: low_var_kl
     # use_torch_compile: false
@@ -82,7 +83,7 @@ actor_rollout_ref:
       model_dtype: bfloat16
     checkpoint:
       save_contents: [] # 节省空间
-    ppo_mini_batch_size: 16
+    ppo_mini_batch_size: 8
     ppo_micro_batch_size_per_gpu: 1 # force 1 to not fault
     # use_dynamic_bsz: false # 开启动态调整batch size以适应显存见https://woniu9524.github.io/verl-doc/perf/perf_tuning.html
     # ppo_max_token_len_per_gpu: 8192
@@ -129,7 +130,7 @@ actor_rollout_ref:
     # max_num_batched_tokens: 10240 # 单词推理最大长度
     max_model_len: 16384 # prompt+response最大长度，超过这个长度会被丢弃
     temperature: 1.0
-    top_p: 1.0
+    top_p: 0.95
     top_k: -1
     val_kwargs:
       temperature: 0.2
@@ -147,11 +148,11 @@ reward:
     overlong_buffer_cfg:
       enable: true
       len: 2048
-      penalty_factor: 1.0
+      penalty_factor: 0.3
       log: false
     timeout_sec: 4
     memory_limit_mb: 1024
-    difficulty_alpha: 2.0
+    difficulty_alpha: 1.0
     density_sigma_floor: 0.001
     efficiency_gamma: 0.995
     efficiency_mode: turn_count  # paper eq.5: decay by |tau| (turn count)
@@ -162,7 +163,7 @@ reward:
     reward_kwargs:
       timeout_sec: 4
       memory_limit_mb: 1024
-      difficulty_alpha: 2.0
+      difficulty_alpha: 1.0
       density_sigma_floor: 0.001
       efficiency_gamma: 0.995
       efficiency_mode: turn_count
@@ -178,8 +179,8 @@ trainer:
   val_before_train: false
   save_dataloader_state: false # 关闭保存 data.pt
   max_actor_ckpt_to_keep: 3
-  test_freq: 6
-  save_freq: 6
+  test_freq: 5
+  save_freq: 5
   total_epochs: 1
   # total_training_steps: 20
   default_local_dir: ${oc.env:OUTPUT_DIR,./outputs/verl/${trainer.project_name}/${trainer.experiment_name}}
