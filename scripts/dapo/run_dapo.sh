@@ -8,13 +8,13 @@ TP=1
 # export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 export TRANSFORMERS_OFFLINE=1
 export HF_HUB_OFFLINE=1
-export RAY_TMPDIR=/root/shared-nvme/.cache/ray
+# export RAY_TMPDIR=/root/shared-nvme/.cache/ray
 export PJ_ROOT=$(pwd)
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 # verl_root=${script_dir}/verl
 
 DATA_DIR=${DATA_DIR:-${script_dir}/rl_data}
-export MODEL_PATH=${MODEL_PATH:-Qwen/Qwen3.5-0.8B}
+export MODEL_PATH=${MODEL_PATH:-Qwen/Qwen3.5-9B}
 export EXP_TIME_SUFFIX=$(date +%m-%d_%H%M)
 
 # Ray
@@ -26,9 +26,9 @@ runtime_env=${script_dir}/verl/verl/trainer/runtime_env.yaml
 
 python3 -m scripts.dapo.main_dapo \
     --config-path="${script_dir}/scripts/dapo/config" \
-    --config-name=dapo_qwen3_5_0_8b \
+    --config-name=dapo_qwen3_5_9b \
     trainer.n_gpus_per_node=$NGPUS \
-    trainer.experiment_name=DAPO-Qwen3.5-0.8B_${EXP_TIME_SUFFIX} \
+    trainer.experiment_name=DAPO-Qwen3.5-9B_${EXP_TIME_SUFFIX} \
     actor_rollout_ref.rollout.tensor_model_parallel_size=$TP
 
 # ray job submit \
@@ -36,7 +36,7 @@ python3 -m scripts.dapo.main_dapo \
 #     --runtime-env="${runtime_env}" \
 #     --working-dir "${working_dir}" \
 #     -- python3 -m scripts.dapo.main_dapo \
-#     --config-name=dapo_qwen3_5_0_8b \
+#     --config-name=dapo_qwen3_5_9b \
 #     trainer.n_gpus_per_node=$NGPUS \
 #     actor_rollout_ref.rollout.tensor_model_parallel_size=$TP \
 #     "$@"
