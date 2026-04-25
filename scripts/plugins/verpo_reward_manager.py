@@ -163,6 +163,9 @@ class VeRPORewardManager(AbstractRewardManager):
                     "dense_reward", "traj_reward", "outcome_reward",
                     "efficiency_decay", "avg_difficulty_weight", "density_sigma"):
             reward_extra_info[key] = [0.0] * n
+        if self.overlong_buffer_cfg is not None and self.overlong_buffer_cfg.log:
+            reward_extra_info["overlong_reward"] = [0.0] * n
+            reward_extra_info["overlong"] = [False] * n
 
         already_print: dict[str, int] = {}
 
@@ -220,27 +223,28 @@ class VeRPORewardManager(AbstractRewardManager):
                 # score = traj_reward (used by reward_tensor path)
                 score = traj_reward
                 reward = score
+                overlong_penalty = 0.0
 
                 # Overlong penalty
                 if self.overlong_buffer_cfg is not None and self.overlong_buffer_cfg.enable:
                     buf_len = self.overlong_buffer_cfg.len
                     expected = self.max_resp_len - buf_len
                     exceed = valid_resp_len - expected
-                    penalty = min(-exceed / buf_len * self.overlong_buffer_cfg.penalty_factor, 0)
-                    reward += penalty
+                    overlong_penalty = min(-exceed / buf_len * self.overlong_buffer_cfg.penalty_factor, 0)
+                    reward += overlong_penalty
                     if self.overlong_buffer_cfg.log:
-                        reward_extra_info["overlong_reward"][i] = penalty
-                        reward_extra_info["overlong"][i] = penalty < 0
+                        reward_extra_info["overlong_reward"][i] = overlong_penalty
+                        reward_extra_info["overlong"][i] = overlong_penalty < 0
 
                 reward_tensor[i, max(valid_resp_len - 1, 0)] = reward
 
-                reward_extra_info["score"][i] = score
+                reward_extra_info["score"][i] = score + overlong_penalty
                 reward_extra_info["acc"][i] = raw["pass_rate"]
                 reward_extra_info["passed"][i] = raw["passed"]
                 reward_extra_info["total"][i] = raw["total"]
                 reward_extra_info["pass_rate"][i] = raw["pass_rate"]
-                reward_extra_info["dense_reward"][i] = dense_reward
-                reward_extra_info["traj_reward"][i] = traj_reward
+                reward_extra_info["dense_reward"][i] = dense_reward + overlong_penalty
+                reward_extra_info["traj_reward"][i] = traj_reward + overlong_penalty
                 reward_extra_info["outcome_reward"][i] = raw["outcome_reward"]
                 reward_extra_info["efficiency_decay"][i] = efficiency_decay
                 reward_extra_info["avg_difficulty_weight"][i] = avg_w
