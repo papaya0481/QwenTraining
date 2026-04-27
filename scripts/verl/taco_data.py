@@ -13,9 +13,9 @@ from verl.utils.hdfs_io import copy, makedirs
 BALANCED_MIX_SEED = 42
 MIX_MEDIUM_DIFFICULTIES = ("EASY", "MEDIUM", "MEDIUM_HARD", "HARD")
 MIX_MEDIUM_WEIGHTS = {
-    "EASY": 6,
-    "MEDIUM": 13,
-    "MEDIUM_HARD": 1,
+    "EASY": 2,
+    "MEDIUM": 8,
+    "MEDIUM_HARD": 0,
     "HARD": 0,
 }
 
