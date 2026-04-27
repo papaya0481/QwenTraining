@@ -15,10 +15,10 @@ data:
   prompt_key: prompt
   truncation: error
   max_prompt_length: 4096
-  max_response_length: 10240 # 最大生成长度，8192+2048 = 10240
+  max_response_length: 8192 # 最大生成长度，8192+2048 = 10240
   filter_overlong_prompts: true
   # gen_batch_size: 4  # 关闭dapo的dynamic sampling后，实际起作用的是这个==train_batch_size
-  train_batch_size: 16
+  train_batch_size: 8
   shuffle: false
   seed: 42
   apply_chat_template_kwargs:
@@ -55,8 +55,8 @@ actor_rollout_ref:
 
   actor:
     strategy: fsdp2
-    use_kl_loss: false
-    kl_loss_coef: 0.0
+    use_kl_loss: true
+    kl_loss_coef: 0.01
     clip_ratio_low: 0.2
     clip_ratio_high: 0.25
     entropy_coeff: 0
@@ -81,7 +81,7 @@ actor_rollout_ref:
       model_dtype: bfloat16
     checkpoint:
       save_contents: [] # 节省空间
-    ppo_mini_batch_size: 8
+    ppo_mini_batch_size: 2
     ppo_micro_batch_size_per_gpu: 1 # force 1 to not fault
     # use_dynamic_bsz: false # 开启动态调整batch size以适应显存见https://woniu9524.github.io/verl-doc/perf/perf_tuning.html
     # ppo_max_token_len_per_gpu: 8192
