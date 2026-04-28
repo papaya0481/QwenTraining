@@ -104,10 +104,10 @@ actor_rollout_ref:
     # log_prob_max_token_len_per_gpu: ${actor_rollout_ref.actor.ppo_max_token_len_per_gpu}
 
   rollout:
-    # trace: # 添加查看val data的回答
-    #   backend: None
-    #   token2text: true  # 能够查看生成的text
-    #   max_samples_per_step_per_worker: 3
+    trace: # 添加查看val data的回答
+      backend: weave
+      token2text: true  # 能够查看生成的text
+      max_samples_per_step_per_worker: 3
     name: vllm
     enforce_eager: false  # 切换eager和flash-attn
     load_format: safetensors
@@ -148,6 +148,7 @@ reward:
       len: 0
       penalty_factor: 0.0
       log: false
+    max_resp_len: ${data.max_response_length}
   custom_reward_function:
     path: scripts/plugins/verl_codegen1_raw_reward.py
     name: compute_score
@@ -168,6 +169,6 @@ trainer:
   max_actor_ckpt_to_keep: 3
   test_freq: 10
   save_freq: 10
-  total_epochs: 1
-  # total_training_steps: 20
+  total_epochs: 2
+  total_training_steps: 100
   default_local_dir: ${oc.env:OUTPUT_DIR,./outputs/verl/${trainer.project_name}/${trainer.experiment_name}}

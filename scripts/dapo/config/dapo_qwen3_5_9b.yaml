@@ -92,7 +92,7 @@ actor_rollout_ref:
   ref:
     model:
       override_config:
-        attn_implementation: eager
+        attn_implementation: flash_attention_2
     # use_torch_compile: false
     ulysses_sequence_parallel_size: 1
     entropy_from_logits_with_chunking: true
@@ -100,15 +100,16 @@ actor_rollout_ref:
       param_offload: false
       offload_policy: false
       reshard_after_forward: false
+      model_dtype: bfloat16
     log_prob_micro_batch_size_per_gpu: ${actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu}
     # log_prob_use_dynamic_bsz: ${actor_rollout_ref.actor.use_dynamic_bsz}
     # log_prob_max_token_len_per_gpu: ${actor_rollout_ref.actor.ppo_max_token_len_per_gpu}
 
   rollout:
-    # trace: # 添加查看val data的回答
-    #   backend: None
-    #   token2text: true  # 能够查看生成的text
-    #   max_samples_per_step_per_worker: 3
+    trace: # 添加查看val data的回答
+      backend: weave
+      token2text: true  # 能够查看生成的text
+      max_samples_per_step_per_worker: 3
     name: vllm
     enforce_eager: false  # 切换eager和flash-attn
     load_format: safetensors
