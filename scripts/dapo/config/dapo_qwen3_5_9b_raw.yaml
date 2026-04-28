@@ -26,13 +26,13 @@ data:
 
 algorithm:
   adv_estimator: grpo
-  norm_adv_by_std_in_grpo: false
+  norm_adv_by_std_in_grpo: true
   use_kl_in_reward: false
   kl_ctrl:
     kl_coef: 0.0
   filter_groups:
-    enable: false
-    max_num_gen_batches: 8
+    enable: true
+    max_num_gen_batches: 20
     metric: acc  # 参考 https://verl.readthedocs.io/en/latest/algo/dapo.html
 
 # lora_adapter_path: 加载lora 权重
@@ -123,7 +123,7 @@ actor_rollout_ref:
     log_prob_micro_batch_size_per_gpu: ${actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu}
     # log_prob_use_dynamic_bsz: ${actor_rollout_ref.actor.use_dynamic_bsz}
     # log_prob_max_token_len_per_gpu: ${actor_rollout_ref.actor.ppo_max_token_len_per_gpu}
-    gpu_memory_utilization: 0.83
+    gpu_memory_utilization: 0.8
     tensor_model_parallel_size: 1 # override
     max_num_seqs: 16  # 并行序列数，限制在一定范围内以避免显存不足
     # max_num_batched_tokens: 10240 # 单词推理最大长度
@@ -166,8 +166,8 @@ trainer:
   val_before_train: false
   save_dataloader_state: false # 关闭保存 data.pt
   max_actor_ckpt_to_keep: 3
-  test_freq: 5
-  save_freq: 5
+  test_freq: 10
+  save_freq: 10
   total_epochs: 1
   # total_training_steps: 20
   default_local_dir: ${oc.env:OUTPUT_DIR,./outputs/verl/${trainer.project_name}/${trainer.experiment_name}}
