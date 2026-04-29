@@ -1,7 +1,7 @@
 """Raw CodeGen1 reward for DAPO/GRPO training.
 
 The reward is intentionally sparse: pass every provided test case and receive
-1.0, otherwise receive 0.0. The DAPO reward manager consumes the returned
+1.0, otherwise receive -1.0. The DAPO reward manager consumes the returned
 ``score`` field and logs the remaining fields as reward extras.
 """
 
@@ -61,7 +61,7 @@ def _parse_test_cases(ground_truth: Any) -> Any:
 
 def _empty_result() -> dict[str, float | int | bool]:
     return {
-        "score": 0.0,
+        "score": -1.0,
         "acc": 0.0,
         "passed": 0,
         "total": 0,
@@ -101,7 +101,7 @@ def compute_score(
     passed = sum(1 for item in results if item.get("passed", False))
     total = len(results)
     all_passed = passed == total
-    score = 1.0 if all_passed else 0.0
+    score = 1.0 if all_passed else -1.0
     pass_rate = float(passed) / float(total)
 
     return {
