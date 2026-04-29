@@ -72,6 +72,16 @@ def _value_diff_summary(a: torch.Tensor, b: torch.Tensor) -> str:
     return f"different_elements={int(neq)}"
 
 
+def _changed_elements(a: torch.Tensor, b: torch.Tensor, rtol: float | None, atol: float) -> int:
+    if a.dtype != b.dtype or a.shape != b.shape:
+        return 0
+    if rtol is None:
+        return int((a != b).sum().item())
+    if a.dtype.is_floating_point or a.dtype.is_complex:
+        return int((~torch.isclose(a, b, rtol=rtol, atol=atol, equal_nan=True)).sum().item())
+    return int((a != b).sum().item())
+
+
 def compare_safetensors(
     file_a: Path,
     file_b: Path,
@@ -102,10 +112,22 @@ def compare_safetensors(
 
     common_keys = sorted(keys_a & keys_b)
     mismatch_count = 0
+    comparable_elements = 0
+    changed_elements = 0
+    l2_base_sq = 0.0
+    l2_diff_sq = 0.0
 
     for key in common_keys:
         ta = data_a[key]
         tb = data_b[key]
+        if ta.dtype == tb.dtype and ta.shape == tb.shape:
+            comparable_elements += ta.numel()
+            changed_elements += _changed_elements(ta, tb, rtol=rtol, atol=atol)
+            if ta.dtype.is_floating_point or ta.dtype.is_complex:
+                aa = ta.to(torch.float64)
+                bb = tb.to(torch.float64)
+                l2_base_sq += aa.abs().square().sum().item()
+                l2_diff_sq += (bb - aa).abs().square().sum().item()
         if not _tensors_equal(ta, tb, rtol=rtol, atol=atol):
             all_equal = False
             mismatch_count += 1
@@ -118,6 +140,15 @@ def compare_safetensors(
         lines.append(
             f"[VALUE MISMATCH] ... and {mismatch_count - max_report} more mismatched tensors"
         )
+
+    changed_fraction = changed_elements / comparable_elements if comparable_elements else 0.0
+    lines.append(
+        f"[ELEMENTS] comparable={comparable_elements}, changed={changed_elements}, "
+        f"changed_fraction={changed_fraction:.8f}"
+    )
+    if l2_base_sq > 0:
+        relative_l2 = (l2_diff_sq ** 0.5) / (l2_base_sq ** 0.5)
+        lines.append(f"[FLOAT_DIFF] relative_l2={relative_l2:.8e}")
 
     lines.append(
         f"[SUMMARY] keys_a={len(keys_a)}, keys_b={len(keys_b)}, common={len(common_keys)}, value_mismatches={mismatch_count}"
