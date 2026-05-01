@@ -26,9 +26,9 @@ runtime_env=${script_dir}/verl/verl/trainer/runtime_env.yaml
 
 python3 -m scripts.dapo.main_dapo \
     --config-path="${script_dir}/scripts/dapo/config" \
-    --config-name=dapo_qwen3_5_9b \
+    --config-name=dapo_qwen3_5_9b_raw \
     trainer.n_gpus_per_node=$NGPUS \
-    trainer.experiment_name=DAPO-Qwen3.5-9B_${EXP_TIME_SUFFIX} \
+    trainer.experiment_name=DAPO-Qwen3.5-9B-raw_${EXP_TIME_SUFFIX} \
     actor_rollout_ref.rollout.tensor_model_parallel_size=$TP
 
 # ray job submit \
