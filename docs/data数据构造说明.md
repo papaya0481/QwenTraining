@@ -37,7 +37,7 @@
 
 重点是：
 
-- 抽 code domain
+- 抽取 code domain 样本
 - 限制样本长度
 - 裁剪测试样例
 - 用执行器验证 `deepseek_solution`
@@ -115,6 +115,14 @@
 
 - 只保留 `domain == "code"` 的样本
 - 过滤掉 `deepseek_reasoning + deepseek_solution` 太长的样本
+
+这里的“抽取 code domain 样本”，指的是从 OpenThoughts 的混合领域数据中，只筛选 `domain` 字段等于 `code` 的记录。
+
+也就是说，原始 OpenThoughts 里不一定全是代码题；脚本会先通过：
+
+- `dataset.filter(lambda x: x["domain"] == "code")`
+
+把非代码领域样本排除掉，只留下后续适合做代码生成、代码执行验证和 SFT/RL 数据构造的样本。
 
 这一步的目的很直接：
 
