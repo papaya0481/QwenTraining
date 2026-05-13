@@ -211,19 +211,48 @@
 
 - 对 `user` 字段做 LSH 去重
 
-具体做法：
+实际调用是：
 
-1. 文本转成字符 n-gram
-2. 构造 `MinHash`
-3. 用 `MinHashLSH` 查近邻
-4. 保留没有命中近邻的样本
+```python
+unique_indices = deduplicate_with_lsh(
+    merged_data,
+    column_name='user',
+    threshold=0.8,
+    num_perm=128,
+)
+```
 
-这个方法不是精确 dedup，但足够适合大规模数据的近重复过滤。
+也就是说，去重对象不是答案代码，也不是 testcase，而是题面 prompt，也就是 `user` 字段。
+
+具体算法可以理解成下面几步：
+
+1. 先把 `user` 文本里的空白字符去掉。
+2. 把文本切成字符级 3-gram，例如连续 3 个字符组成一个片段。
+3. 用这些 3-gram 构造 `MinHash(num_perm=128)` 签名。
+4. 用 `MinHashLSH(threshold=0.8)` 查询之前已经保留的样本里有没有近邻。
+5. 如果查不到近邻，就把当前样本插入 LSH，并保留它的 index；如果查到了近邻，就认为它和已有题面近似重复，直接跳过。
+
+对应代码逻辑是：
+
+```python
+ngrams = set(get_ngrams(text))
+m = MinHash(num_perm=num_perm)
+for ngram in ngrams:
+    m.update(ngram.encode('utf8'))
+
+result = lsh.query(m)
+if not result:
+    lsh.insert(str(idx), m)
+    unique_indices.append(idx)
+```
+
+这里的 `threshold=0.8` 表示：如果两个题面的 MinHash 估计 Jaccard 相似度高到约 0.8，就会被当作近重复候选。它不是精确 dedup，也不会逐字比较全文；它更像一个高效的近似查重方法，适合在合并大规模数据时快速过滤“题面几乎一样、只改了少量表述”的样本。
 
 它的重点是：
 
 - 去掉题面级近重复
 - 降低相似题对训练分布的挤压
+- 避免同一类题面在 SFT/RL 数据里被重复采样太多次
 
 ### 5.4 文本格式规范化
 
